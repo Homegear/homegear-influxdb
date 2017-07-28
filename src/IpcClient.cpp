@@ -198,28 +198,20 @@ Ipc::PVariable IpcClient::broadcastEvent(Ipc::PArray& parameters)
 {
 	try
 	{
-		GD::out.printInfo("Moin0");
 		if(parameters->size() != 4) return Ipc::Variable::createError(-1, "Wrong parameter count.");
 
-		GD::out.printInfo("Moin1");
 		std::lock_guard<std::mutex> variablesGuard(_variablesMutex);
-		GD::out.printInfo("Moin2");
 		auto variablesIterator = _variables.find(parameters->at(0)->integerValue64);
-		GD::out.printInfo("Moin3");
 		if(variablesIterator != _variables.end())
 		{
-			GD::out.printInfo("Moin4");
 			auto channelsIterator = variablesIterator->second.find(parameters->at(1)->integerValue64);
 			if(channelsIterator != variablesIterator->second.end())
 			{
-				GD::out.printInfo("Moin5");
 				for(uint32_t i = 0; i < parameters->at(2)->arrayValue->size(); ++i)
 				{
-					GD::out.printInfo("Moin6");
 					auto variableIterator = channelsIterator->second.find(parameters->at(2)->arrayValue->at(i)->stringValue);
 					if(variableIterator != channelsIterator->second.end())
 					{
-						GD::out.printInfo("Moin7");
 						parameters->at(2)->arrayValue->at(i)->stringValue = stripNonAlphaNumeric(parameters->at(2)->arrayValue->at(i)->stringValue);
 						GD::db->saveValue(parameters->at(0)->integerValue64, parameters->at(1)->integerValue64, parameters->at(2)->arrayValue->at(i)->stringValue, parameters->at(3)->arrayValue->at(i));
 					}
