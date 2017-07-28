@@ -212,6 +212,8 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 	{
 		std::string tableName = getTableName(peerId, channel, variable);
 
+		influxQueryPost("DROP CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\"");
+
 		influxQueryPost("DROP MEASUREMENT \"" + tableName + "\"");
 	}
 
@@ -228,6 +230,18 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 
 		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + initialValue->toString() + (initialValue->type == Ipc::VariableType::tString ? "\"" : ""));
 		if(result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
+
+		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
+		{
+			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" GROUP BY time(30m) END");
+		}
+		else
+		{
+			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" RESAMPLE EVERY 30m BEGIN SELECT value INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" END");
+		}
+
+		if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
+		else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
 	}
 
 	void Database::saveValue(uint64_t peerId, int32_t channel, std::string& variable, Ipc::PVariable value)
