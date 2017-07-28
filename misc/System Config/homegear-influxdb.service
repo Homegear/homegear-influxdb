@@ -1,0 +1,17 @@
+[Unit]
+Description=Homegear InfluxDB
+After=homegear
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+PIDFile=/var/run/homegear/homegear-influxdb.pid
+TimeoutSec=300
+LimitRTPRIO=100
+ExecStart=/usr/bin/homegear-influxdb -u homegear -g homegear -p /var/run/homegear/homegear-influxdb.pid
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+TasksMax=infinity
+LimitCORE=infinity

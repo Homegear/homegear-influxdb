@@ -1,0 +1,31 @@
+#!/usr/bin/make -f
+
+override_dh_auto_configure:
+	dh_auto_configure -- --with-curl
+
+override_dh_auto_install:
+	dh_auto_install
+
+	mkdir -p $(CURDIR)/debian/homegear-influxdb/etc/homegear
+	cp -R $(CURDIR)/misc/Config\ Directory/influxdb.conf $(CURDIR)/debian/homegear-influxdb/etc/homegear
+	chmod 644 $(CURDIR)/debian/homegear-influxdb/etc/homegear/influxdb.conf
+
+	mkdir -p $(CURDIR)/debian/homegear-influxdb/etc/init.d
+	cp $(CURDIR)/misc/System\ Config/homegear-influxdb.init $(CURDIR)/debian/homegear-influxdb/etc/init.d/homegear-influxdb
+	chown root:root $(CURDIR)/debian/homegear-influxdb/etc/init.d/homegear-influxdb
+	chmod 755 $(CURDIR)/debian/homegear-influxdb/etc/init.d/homegear-influxdb
+	mkdir -p $(CURDIR)/debian/homegear-influxdb/lib/systemd/system
+	cp $(CURDIR)/misc/System\ Config/homegear-influxdb.service $(CURDIR)/debian/homegear-influxdb/lib/systemd/system/
+	chown root:root $(CURDIR)/debian/homegear-influxdb/lib/systemd/system/homegear-influxdb.service
+	chmod 644 $(CURDIR)/debian/homegear-influxdb/lib/systemd/system/homegear-influxdb.service
+
+	mkdir -p $(CURDIR)/debian/homegear-influxdb/etc/logrotate.d
+	cp $(CURDIR)/misc/System\ Config/logrotate $(CURDIR)/debian/homegear-influxdb/etc/logrotate.d/homegear-influxdb
+	chown root:root $(CURDIR)/debian/homegear-influxdb/etc/logrotate.d/homegear-influxdb
+	chmod 644 $(CURDIR)/debian/homegear-influxdb/etc/logrotate.d/homegear-influxdb
+
+override_dh_strip:
+	dh_strip --dbg-package=homegear-influxdb
+
+%:
+	dh $@ --parallel
