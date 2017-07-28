@@ -42,11 +42,13 @@ public:
 	class QueueEntry : public BaseLib::IQueueEntry
 	{
 	public:
-		QueueEntry(std::string command) { _command = command; };
+		QueueEntry(std::string command, bool lowres) { _command = command; _lowres = lowres; };
 		virtual ~QueueEntry() {};
 		std::string& getCommand() { return _command; }
+		bool getLowres() { return _lowres; }
 	private:
 		std::string _command;
+		bool _lowres = false;
 	};
 
 	Database(BaseLib::SharedObjects* bl);
@@ -67,12 +69,13 @@ protected:
 	std::string _queryGetHeader;
 	std::string _queryPostHeader;
 	std::string _writeHeader;
+	std::string _writeHeaderLowRes;
 	std::unique_ptr<BaseLib::HttpClient> _httpClient;
 	std::unique_ptr<Ipc::JsonDecoder> _jsonDecoder;
 	std::unique_ptr<Ipc::JsonEncoder> _jsonEncoder;
 
 	Ipc::PVariable influxQueryPost(std::string query);
-	Ipc::PVariable influxWrite(std::string query);
+	Ipc::PVariable influxWrite(std::string query, bool lowRes);
 	std::string getTableName(uint64_t peerId, int32_t channel, std::string& variable);
 	virtual void processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry>& entry);
 };

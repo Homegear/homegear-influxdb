@@ -65,12 +65,12 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		return result;
 	}
 
-	Ipc::PVariable Database::influxWrite(std::string query)
+	Ipc::PVariable Database::influxWrite(std::string query, bool lowRes)
 	{
 		BaseLib::Http response;
 		try
 		{
-			std::string request = _writeHeader + "Content-Length: " + std::to_string(query.size()) + "\r\n\r\n" + query;
+			std::string request = (lowRes? _writeHeaderLowRes : _writeHeader) + "Content-Length: " + std::to_string(query.size()) + "\r\n\r\n" + query;
 			_httpClient->sendRequest(request, response, false);
 		}
 		catch(const std::exception& ex)
@@ -134,6 +134,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 
 			_queryPostHeader = "POST /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nConnection: Close\r\n";
 			_writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n";
+			_writeHeaderLowRes = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&rp=lowres HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n";
 		}
 		catch(const std::exception& ex)
 		{
@@ -154,8 +155,14 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		std::shared_ptr<QueueEntry> queueEntry = std::dynamic_pointer_cast<QueueEntry>(entry);
 		if(!queueEntry) return;
 
-		Ipc::PVariable result = influxWrite(queueEntry->getCommand());
-		if(result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
+		Ipc::PVariable result = influxWrite(queueEntry->getCommand(), false);
+		if(result && result->errorStruct) GD::out.printError("Error creating measurement (1): " + result->structValue->at("faultString")->stringValue);
+
+		if(queueEntry->getLowres())
+		{
+			result = influxWrite(queueEntry->getCommand(), true);
+			if(result && result->errorStruct) GD::out.printError("Error creating measurement (2): " + result->structValue->at("faultString")->stringValue);
+		}
 	}
 //}}}
 
@@ -228,16 +235,12 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			initialValue = encodedValue;
 		}
 
-		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + initialValue->toString() + (initialValue->type == Ipc::VariableType::tString ? "\"" : ""));
+		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + initialValue->toString() + (initialValue->type == Ipc::VariableType::tString ? "\"" : ""), false);
 		if(result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
 
 		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
 		{
 			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" GROUP BY time(30m) END");
-		}
-		else
-		{
-			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" RESAMPLE EVERY 30m BEGIN SELECT value INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" END");
 		}
 
 		if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
@@ -257,7 +260,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			value = encodedValue;
 		}
 
-		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + value->toString() + (value->type == Ipc::VariableType::tString ? "\"" : ""));
+		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + value->toString() + (value->type == Ipc::VariableType::tString ? "\"" : ""), value->type == Ipc::VariableType::tBoolean);
 		enqueue(0, entry);
 	}
 //}}}
