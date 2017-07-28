@@ -1,0 +1,19 @@
+[Unit]
+Description=Homegear History
+After=homegear
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+Type=simple
+PIDFile=/var/run/homegear/homegear-history.pid
+TimeoutSec=300
+LimitRTPRIO=100
+ExecStartPre=/etc/homegear/homegear-history-start.sh
+ExecStart=/usr/bin/homegear-history -u homegear -g homegear -p /var/run/homegear/homegear-history.pid
+ExecStopPost=/etc/homegear/homegear-history-stop.sh
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+TasksMax=infinity
+LimitCORE=infinity

@@ -1,0 +1,13 @@
+/var/log/homegear-history/*.log /var/log/homegear-history/*.err {
+        missingok
+        rotate 2
+        compress
+        delaycompress
+        notifempty
+        size 10M
+        create 640 homegear homegear
+        sharedscripts
+        postrotate
+        service homegear-history reload > /dev/null
+        endscript
+}
