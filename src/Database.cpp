@@ -260,7 +260,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			value = encodedValue;
 		}
 
-		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + value->toString() + (value->type == Ipc::VariableType::tString ? "\"" : ""), value->type == Ipc::VariableType::tBoolean);
+		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + value->toString() + (value->type == Ipc::VariableType::tString ? "\"" : ""), value->type != Ipc::VariableType::tFloat && value->type != Ipc::VariableType::tInteger && value->type != Ipc::VariableType::tInteger64);
 		enqueue(0, entry);
 	}
 //}}}
