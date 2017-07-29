@@ -241,10 +241,9 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
 		{
 			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" GROUP BY time(30m) END");
+			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
+			else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
 		}
-
-		if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
-		else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
 	}
 
 	void Database::saveValue(uint64_t peerId, int32_t channel, std::string& variable, Ipc::PVariable value)
