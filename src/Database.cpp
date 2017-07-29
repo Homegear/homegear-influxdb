@@ -226,6 +226,8 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 
 	void Database::createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue)
 	{
+		GD::out.printInfo("Info: Creating measurement for variable: PeerId " + std::to_string(peerId) + ", channel " + std::to_string(channel) + ", variable " + variable + ", type " + initialValue->getTypeString(initialValue->type));
+
 		std::string tableName = getTableName(peerId, channel, variable);
 
 		if(initialValue->type != Ipc::VariableType::tBoolean && initialValue->type != Ipc::VariableType::tFloat && initialValue->type != Ipc::VariableType::tInteger && initialValue->type != Ipc::VariableType::tInteger64 && initialValue->type != Ipc::VariableType::tString && initialValue->type != Ipc::VariableType::tBase64)
