@@ -21,11 +21,11 @@ LOGPATH=/var/log/homegear-influxdb
 
 test -x $DAEMON || exit 5
 
-if [ -r /etc/default/homegear ]; then
-        . /etc/default/homegear
+if [ -r /etc/default/homegear-influxdb ]; then
+        . /etc/default/homegear-influxdb
 fi
 
-HOMEGEAR_OPTS="$HOMEGEAR_OPTS -d"
+HOMEGEAR_INFLUXDB_OPTS="$HOMEGEAR_INFLUXDB_OPTS -d"
 
 LOCKFILE=/var/lock/homegear-influxdb
 
@@ -65,7 +65,7 @@ case $1 in
                 lock_homegear
                 #Probably has no effect at all...
                 ulimit -r 100
-                start-stop-daemon --start --quiet --oknodo --pidfile $PIDFILE --startas $DAEMON -- -p $PIDFILE -u $RUNASUSER -g $RUNASGROUP $HOMEGEAR_OPTS
+                start-stop-daemon --start --quiet --oknodo --pidfile $PIDFILE --startas $DAEMON -- -p $PIDFILE -u $RUNASUSER -g $RUNASGROUP $HOMEGEAR_INFLUXDB_OPTS
                 status=$?
                 unlock_homegear
 
