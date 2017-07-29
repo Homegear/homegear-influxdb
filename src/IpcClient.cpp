@@ -33,7 +33,7 @@
 
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
-	_localRpcMethods.emplace("historySetLogging", std::bind(&IpcClient::setLogging, this, std::placeholders::_1));
+	_localRpcMethods.emplace("influxdbSetLogging", std::bind(&IpcClient::setLogging, this, std::placeholders::_1));
 	_localRpcMethods.emplace("broadcastEvent", std::bind(&IpcClient::broadcastEvent, this, std::placeholders::_1));
 }
 
@@ -57,7 +57,7 @@ void IpcClient::onConnect()
 		Ipc::PArray parameters = std::make_shared<Ipc::Array>();
 		parameters->reserve(2);
 
-		parameters->push_back(std::make_shared<Ipc::Variable>("historySetLogging"));
+		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbSetLogging"));
 		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
 		Ipc::PVariable signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
@@ -72,7 +72,7 @@ void IpcClient::onConnect()
 		if (result->errorStruct)
 		{
 			error = true;
-			Ipc::Output::printCritical("Critical: Could not register RPC method historySetLogging: " + result->structValue->at("faultString")->stringValue);
+			Ipc::Output::printCritical("Critical: Could not register RPC method influxdbSetLogging: " + result->structValue->at("faultString")->stringValue);
 		}
 
 		if (error) return;
