@@ -34,6 +34,8 @@
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
 	_localRpcMethods.emplace("influxdbSetLogging", std::bind(&IpcClient::setLogging, this, std::placeholders::_1));
+	_localRpcMethods.emplace("influxdbGetLoggedVariables", std::bind(&IpcClient::getLoggedVariables, this, std::placeholders::_1));
+	_localRpcMethods.emplace("influxdbQuery", std::bind(&IpcClient::query, this, std::placeholders::_1));
 	_localRpcMethods.emplace("broadcastEvent", std::bind(&IpcClient::broadcastEvent, this, std::placeholders::_1));
 }
 
@@ -56,7 +58,6 @@ void IpcClient::onConnect()
 
 		Ipc::PArray parameters = std::make_shared<Ipc::Array>();
 		parameters->reserve(2);
-
 		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbSetLogging"));
 		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
 		Ipc::PVariable signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
@@ -67,14 +68,47 @@ void IpcClient::onConnect()
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVariant)); //4th parameter
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //5th parameter
 		parameters->back()->arrayValue->push_back(signature);
-
 		Ipc::PVariable result = invoke("registerRpcMethod", parameters);
 		if (result->errorStruct)
 		{
 			error = true;
 			Ipc::Output::printCritical("Critical: Could not register RPC method influxdbSetLogging: " + result->structValue->at("faultString")->stringValue);
 		}
+		if (error) return;
 
+		parameters = std::make_shared<Ipc::Array>();
+		parameters->reserve(2);
+		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbGetLoggedVariables"));
+		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		parameters->back()->arrayValue->push_back(signature);
+		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
+		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger64)); //1st parameter
+		parameters->back()->arrayValue->push_back(signature);
+		result = invoke("registerRpcMethod", parameters);
+		if (result->errorStruct)
+		{
+			error = true;
+			Ipc::Output::printCritical("Critical: Could not register RPC method influxdbGetLoggedVariables: " + result->structValue->at("faultString")->stringValue);
+		}
+		if (error) return;
+
+		parameters = std::make_shared<Ipc::Array>();
+		parameters->reserve(2);
+		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbQuery"));
+		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
+		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //1st parameter
+		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //2nd parameter
+		parameters->back()->arrayValue->push_back(signature);
+		result = invoke("registerRpcMethod", parameters);
+		if (result->errorStruct)
+		{
+			error = true;
+			Ipc::Output::printCritical("Critical: Could not register RPC method influxdbQuery: " + result->structValue->at("faultString")->stringValue);
+		}
 		if (error) return;
 
 		GD::out.printInfo("Info: RPC methods successfully registered.");
@@ -178,6 +212,105 @@ Ipc::PVariable IpcClient::setLogging(Ipc::PArray& parameters)
 		}
 
 		return std::make_shared<Ipc::Variable>();
+	}
+	catch (const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch (Ipc::IpcException& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch (...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+	return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::getLoggedVariables(Ipc::PArray& parameters)
+{
+	try
+	{
+		if(parameters->size() > 0)
+		{
+			if(parameters->at(0)->type != Ipc::VariableType::tInteger && parameters->at(0)->type != Ipc::VariableType::tInteger64) return Ipc::Variable::createError(-1, "Parameter 1 is not of type integer.");
+		}
+
+		uint64_t peerId = 0;
+		if(!parameters->empty()) peerId = parameters->at(0)->integerValue64;
+
+		Ipc::PVariable result = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray);
+		result->arrayValue->reserve(100);
+
+		if(!parameters->empty())
+		{
+			std::lock_guard<std::mutex> variablesGuard(_variablesMutex);
+			auto variablesIterator = _variables.find(parameters->at(0)->integerValue64);
+			if(variablesIterator != _variables.end())
+			{
+				for(auto channelsIterator : variablesIterator->second)
+				{
+					for(auto variableIterator : channelsIterator.second)
+					{
+						Ipc::PVariable entry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+						entry->structValue->emplace("PEERID", std::make_shared<Ipc::Variable>(peerId));
+						entry->structValue->emplace("CHANNEL", std::make_shared<Ipc::Variable>(channelsIterator.first));
+						entry->structValue->emplace("VARIABLE", std::make_shared<Ipc::Variable>(variableIterator));
+						if(result->arrayValue->size() + 1 > result->arrayValue->capacity()) result->arrayValue->reserve(result->arrayValue->capacity() + 100);
+						result->arrayValue->push_back(entry);
+					}
+				}
+			}
+		}
+		else
+		{
+			std::lock_guard<std::mutex> variablesGuard(_variablesMutex);
+			for(auto variablesIterator : _variables)
+			{
+				for(auto channelsIterator : variablesIterator.second)
+				{
+					for(auto variableIterator : channelsIterator.second)
+					{
+						Ipc::PVariable entry = std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct);
+						entry->structValue->emplace("PEERID", std::make_shared<Ipc::Variable>(variablesIterator.first));
+						entry->structValue->emplace("CHANNEL", std::make_shared<Ipc::Variable>(channelsIterator.first));
+						entry->structValue->emplace("VARIABLE", std::make_shared<Ipc::Variable>(variableIterator));
+						if(result->arrayValue->size() + 1 > result->arrayValue->capacity()) result->arrayValue->reserve(result->arrayValue->capacity() + 100);
+						result->arrayValue->push_back(entry);
+					}
+				}
+			}
+		}
+
+		return result;
+	}
+	catch (const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch (Ipc::IpcException& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch (...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+	return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::query(Ipc::PArray& parameters)
+{
+	try
+	{
+		if(parameters->size() != 2) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+		if(parameters->at(0)->type != Ipc::VariableType::tBoolean) return Ipc::Variable::createError(-1, "Parameter 1 is not of type boolean.");
+		if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type string.");
+		if(parameters->at(1)->stringValue.empty()) return Ipc::Variable::createError(-1, "Parameter 2 is an empty string.");
+
+		if(parameters->at(0)->booleanValue) return GD::db->influxQueryPost(parameters->at(1)->stringValue);
+		else return GD::db->influxQueryGet(parameters->at(1)->stringValue);
 	}
 	catch (const std::exception& ex)
 	{

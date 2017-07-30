@@ -52,13 +52,33 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 }
 
 //{{{ General
+	Ipc::PVariable Database::influxQueryGet(std::string query)
+	{
+		//No try/catch to throw error in calling method
+		std::string request = "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
+		BaseLib::Http response;
+		_httpClient->sendRequest(request, response, false);
+		if(response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299)
+		{
+			GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
+		}
+		Ipc::PVariable result;
+		if(response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
+		else result.reset(new Ipc::Variable());
+		return result;
+	}
+
 	Ipc::PVariable Database::influxQueryPost(std::string query)
 	{
 		//No try/catch to throw error in calling method
-		query = BaseLib::Http::encodeURL(query);
-		std::string request = _queryPostHeader + "Content-Length: " + std::to_string(query.size() + 2) + "\r\n\r\nq=" + query;
+		std::string encodedQuery = BaseLib::Http::encodeURL(query);
+		std::string request = _queryPostHeader + "Content-Length: " + std::to_string(encodedQuery.size() + 2) + "\r\n\r\nq=" + encodedQuery;
 		BaseLib::Http response;
 		_httpClient->sendRequest(request, response, false);
+		if(response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299)
+		{
+			GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
+		}
 		Ipc::PVariable result;
 		if(response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
 		else result.reset(new Ipc::Variable());
@@ -100,7 +120,6 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		{
 			_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false));
 			_pingHeader = "HEAD /ping HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
-			_queryGetHeader = "GET /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
 			_queryPostHeader = "POST /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nConnection: Close\r\n";
 
 			BaseLib::Http response;
