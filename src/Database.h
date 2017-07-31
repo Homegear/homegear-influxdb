@@ -63,10 +63,11 @@ public:
 		void deleteVariableTable(uint64_t peerId, int32_t channel, std::string variable);
 		void createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue);
 		void saveValue(uint64_t peerId, int32_t channel, std::string& variable, Ipc::PVariable value);
+		Ipc::PVariable influxQueryPost(std::string query);
+		Ipc::PVariable influxQueryGet(std::string query);
 	// }}}
 protected:
 	std::string _pingHeader;
-	std::string _queryGetHeader;
 	std::string _queryPostHeader;
 	std::string _writeHeader;
 	std::string _writeHeaderLowRes;
@@ -74,7 +75,6 @@ protected:
 	std::unique_ptr<Ipc::JsonDecoder> _jsonDecoder;
 	std::unique_ptr<Ipc::JsonEncoder> _jsonEncoder;
 
-	Ipc::PVariable influxQueryPost(std::string query);
 	Ipc::PVariable influxWrite(std::string query, bool lowRes);
 	std::string getTableName(uint64_t peerId, int32_t channel, std::string& variable);
 	virtual void processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry>& entry);

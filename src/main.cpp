@@ -35,6 +35,8 @@
 #include <sys/sysctl.h> //For BSD systems
 #include <sys/resource.h> //getrlimit, setrlimit
 #include <sys/file.h> //flock
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include <gcrypt.h>
 #include "../config.h"
@@ -43,13 +45,14 @@ void startUp();
 
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
+bool _startAsDaemon = false;
 std::mutex _shuttingDownMutex;
 std::atomic_bool _reloading;
 std::atomic_bool _startUpComplete;
 std::atomic_bool _shutdownQueued;
 bool _disposing = false;
 
-void exitHomegear(int exitCode)
+void exitProgram(int exitCode)
 {
     exit(exitCode);
 }
@@ -73,7 +76,7 @@ void terminate(int signalNumber)
 				_shuttingDownMutex.unlock();
 				return;
 			}
-			GD::out.printMessage("(Shutdown) => Stopping Homegear History (Signal: " + std::to_string(signalNumber) + ")");
+			GD::out.printMessage("(Shutdown) => Stopping Homegear InfluxDB (Signal: " + std::to_string(signalNumber) + ")");
 			GD::bl->shuttingDown = true;
 			_shuttingDownMutex.unlock();
 			_disposing = true;
@@ -122,7 +125,7 @@ void terminate(int signalNumber)
 		}
 		else
 		{
-			if (!_disposing) GD::out.printCritical("Critical: Signal " + std::to_string(signalNumber) + " received. Stopping Homegear History...");
+			if (!_disposing) GD::out.printCritical("Critical: Signal " + std::to_string(signalNumber) + " received. Stopping Homegear InfluxDB...");
 			signal(signalNumber, SIG_DFL); //Reset signal handler for the current signal to default
 			kill(getpid(), signalNumber); //Generate core dump
 		}
@@ -247,8 +250,50 @@ void printHelp()
 	std::cout << "-u                  Run as user" << std::endl;
 	std::cout << "-g                  Run as group" << std::endl;
 	std::cout << "-c <path>           Specify path to config file" << std::endl;
+	std::cout << "-d                  Run as daemon" << std::endl;
 	std::cout << "-p <pid path>       Specify path to process id file" << std::endl;
 	std::cout << "-v                  Print program version" << std::endl;
+}
+
+void startDaemon()
+{
+	try
+	{
+		pid_t pid, sid;
+		pid = fork();
+		if(pid < 0)
+		{
+			exitProgram(1);
+		}
+		if(pid > 0)
+		{
+			exitProgram(0);
+		}
+
+		//Set process permission
+		umask(S_IWGRP | S_IWOTH);
+
+		//Set child processe's id
+		sid = setsid();
+		if(sid < 0)
+		{
+			exitProgram(1);
+		}
+
+		close(STDIN_FILENO);
+	}
+	catch(const std::exception& ex)
+    {
+    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(BaseLib::Exception& ex)
+    {
+    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
+    catch(...)
+    {
+    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+    }
 }
 
 void startUp()
@@ -258,7 +303,7 @@ void startUp()
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");
-			exitHomegear(1);
+			exitProgram(1);
 		}
 
     	struct sigaction sa;
@@ -281,7 +326,7 @@ void startUp()
 			GD::out.printError("Error: Could not redirect errors to log file.");
 		}
 
-    	GD::out.printMessage("Starting Homegear History...");
+    	GD::out.printMessage("Starting Homegear InfluxDB...");
 
     	if(GD::settings.memoryDebugging()) mallopt(M_CHECK_ACTION, 3); //Print detailed error message, stack trace, and memory, and abort the program. See: http://man7.org/linux/man-pages/man3/mallopt.3.html
 
@@ -314,7 +359,7 @@ void startUp()
 			if(GD::bl->userId == 0 || GD::bl->groupId == 0)
 			{
 				GD::out.printCritical("Could not drop privileges. User name or group name is not valid.");
-				exitHomegear(1);
+				exitProgram(1);
 			}
 			GD::out.printInfo("Info: Dropping privileges to user " + GD::runAsUser + " (" + std::to_string(GD::bl->userId) + ") and group " + GD::runAsGroup + " (" + std::to_string(GD::bl->groupId) + ")");
 
@@ -332,19 +377,19 @@ void startUp()
 			if(setgid(GD::bl->groupId) != 0)
 			{
 				GD::out.printCritical("Critical: Could not drop group privileges.");
-				exitHomegear(1);
+				exitProgram(1);
 			}
 
 			if(setgroups(supplementaryGroups.size(), supplementaryGroups.data()) != 0)
 			{
 				GD::out.printCritical("Critical: Could not set supplementary groups: " + std::string(strerror(errno)));
-				exitHomegear(1);
+				exitProgram(1);
 			}
 
 			if(setuid(GD::bl->userId) != 0)
 			{
 				GD::out.printCritical("Critical: Could not drop user privileges.");
-				exitHomegear(1);
+				exitProgram(1);
 			}
 
 			//Core dumps are disabled by setuid. Enable them again.
@@ -431,7 +476,7 @@ void startUp()
 
 		if(BaseLib::Io::fileExists(GD::settings.workingDirectory() + "core"))
 		{
-			GD::out.printError("Error: A core file exists in Homegear History's working directory (\"" + GD::settings.workingDirectory() + "core" + "\"). Please send this file to the Homegear team including information about your system (Linux distribution, CPU architecture), the Homegear History version, the current log files and information what might've caused the error.");
+			GD::out.printError("Error: A core file exists in Homegear InfluxDB's working directory (\"" + GD::settings.workingDirectory() + "core" + "\"). Please send this file to the Homegear team including information about your system (Linux distribution, CPU architecture), the Homegear InfluxDB version, the current log files and information what might've caused the error.");
 		}
 
        	while(true) std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -536,9 +581,13 @@ int main(int argc, char* argv[])
     				exit(1);
     			}
     		}
+    		else if(arg == "-d")
+    		{
+    			_startAsDaemon = true;
+    		}
     		else if(arg == "-v")
     		{
-    			std::cout << "Homegear History version " << VERSION << std::endl;
+    			std::cout << "Homegear InfluxDB version " << VERSION << std::endl;
     			std::cout << "Copyright (c) 2013-2017 Sathya Laufer" << std::endl << std::endl;
     			exit(0);
     		}
@@ -556,7 +605,7 @@ int main(int argc, char* argv[])
 			if(GD::runAsGroup.empty()) GD::runAsGroup = GD::settings.runAsGroup();
 			if((!GD::runAsUser.empty() && GD::runAsGroup.empty()) || (!GD::runAsGroup.empty() && GD::runAsUser.empty()))
 			{
-				GD::out.printCritical("Critical: You only provided a user OR a group for Homegear History to run as. Please specify both.");
+				GD::out.printCritical("Critical: You only provided a user OR a group for Homegear InfluxDB to run as. Please specify both.");
 				exit(1);
 			}
 			GD::bl->userId = GD::bl->hf.userId(GD::runAsUser);
@@ -571,9 +620,10 @@ int main(int argc, char* argv[])
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");
-			exitHomegear(1);
+			exitProgram(1);
 		}
 
+		if(_startAsDaemon) startDaemon();
     	startUp();
 
         return 0;

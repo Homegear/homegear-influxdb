@@ -52,13 +52,33 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 }
 
 //{{{ General
+	Ipc::PVariable Database::influxQueryGet(std::string query)
+	{
+		//No try/catch to throw error in calling method
+		std::string request = "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
+		BaseLib::Http response;
+		_httpClient->sendRequest(request, response, false);
+		if(response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299)
+		{
+			GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
+		}
+		Ipc::PVariable result;
+		if(response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
+		else result.reset(new Ipc::Variable());
+		return result;
+	}
+
 	Ipc::PVariable Database::influxQueryPost(std::string query)
 	{
 		//No try/catch to throw error in calling method
-		query = BaseLib::Http::encodeURL(query);
-		std::string request = _queryPostHeader + "Content-Length: " + std::to_string(query.size() + 2) + "\r\n\r\nq=" + query;
+		std::string encodedQuery = BaseLib::Http::encodeURL(query);
+		std::string request = _queryPostHeader + "Content-Length: " + std::to_string(encodedQuery.size() + 2) + "\r\n\r\nq=" + encodedQuery;
 		BaseLib::Http response;
 		_httpClient->sendRequest(request, response, false);
+		if(response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299)
+		{
+			GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
+		}
 		Ipc::PVariable result;
 		if(response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
 		else result.reset(new Ipc::Variable());
@@ -100,7 +120,6 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		{
 			_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false));
 			_pingHeader = "HEAD /ping HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
-			_queryGetHeader = "GET /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
 			_queryPostHeader = "POST /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nConnection: Close\r\n";
 
 			BaseLib::Http response;
@@ -226,6 +245,8 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 
 	void Database::createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue)
 	{
+		GD::out.printInfo("Info: Creating measurement for variable: PeerId " + std::to_string(peerId) + ", channel " + std::to_string(channel) + ", variable " + variable + ", type " + initialValue->getTypeString(initialValue->type));
+
 		std::string tableName = getTableName(peerId, channel, variable);
 
 		if(initialValue->type != Ipc::VariableType::tBoolean && initialValue->type != Ipc::VariableType::tFloat && initialValue->type != Ipc::VariableType::tInteger && initialValue->type != Ipc::VariableType::tInteger64 && initialValue->type != Ipc::VariableType::tString && initialValue->type != Ipc::VariableType::tBase64)
@@ -241,10 +262,9 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
 		{
 			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" GROUP BY time(30m) END");
+			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
+			else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
 		}
-
-		if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
-		else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
 	}
 
 	void Database::saveValue(uint64_t peerId, int32_t channel, std::string& variable, Ipc::PVariable value)
