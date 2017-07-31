@@ -65,6 +65,7 @@ public:
 		void saveValue(uint64_t peerId, int32_t channel, std::string& variable, Ipc::PVariable value);
 		Ipc::PVariable influxQueryPost(std::string query);
 		Ipc::PVariable influxQueryGet(std::string query);
+		Ipc::PVariable influxWrite(std::string query, bool lowRes);
 	// }}}
 protected:
 	std::string _pingHeader;
@@ -75,7 +76,6 @@ protected:
 	std::unique_ptr<Ipc::JsonDecoder> _jsonDecoder;
 	std::unique_ptr<Ipc::JsonEncoder> _jsonEncoder;
 
-	Ipc::PVariable influxWrite(std::string query, bool lowRes);
 	std::string getTableName(uint64_t peerId, int32_t channel, std::string& variable);
 	virtual void processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry>& entry);
 };

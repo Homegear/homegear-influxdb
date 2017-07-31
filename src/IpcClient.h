@@ -62,6 +62,7 @@ private:
 	Ipc::PVariable setLogging(Ipc::PArray& parameters);
 	Ipc::PVariable getLoggedVariables(Ipc::PArray& parameters);
 	Ipc::PVariable query(Ipc::PArray& parameters);
+	Ipc::PVariable write(Ipc::PArray& parameters);
 
 	Ipc::PVariable broadcastEvent(Ipc::PArray& parameters);
 	// }}}
