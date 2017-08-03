@@ -51,6 +51,11 @@ void Settings::reset()
 	_socketPath = _executablePath;
 	_logfilePath = "/var/log/homegear-influxdb/";
 	_secureMemorySize = 65536;
+	_enableSSL = false;
+	_caFile = "";
+	_verifyCertificate = true;
+	_certPath = "";
+	_keyPath = "";
 }
 
 bool Settings::changed()
@@ -189,6 +194,31 @@ void Settings::load(std::string filename, std::string executablePath)
 					//Allow 0 => disable secure memory. 16384 is minimum size. Values smaller than 16384 are set to 16384 by gcrypt: https://gnupg.org/documentation/manuals/gcrypt-devel/Controlling-the-library.html
 					if(_secureMemorySize < 0) _secureMemorySize = 1;
 					GD::bl->out.printDebug("Debug: secureMemorySize set to " + std::to_string(_secureMemorySize));
+				}
+				else if(name == "enablessl")
+				{
+					if(value == "true") _enableSSL = true;
+					GD::bl->out.printDebug("Debug: enableSSL set to " + _enableSSL);
+				}
+				else if(name == "cafile")
+				{
+					_caFile = value;
+					GD::bl->out.printDebug("Debug: caFile set to " + _caFile);
+				}
+				else if(name == "verifycertificate")
+				{
+					if(value == "false") _verifyCertificate = false;
+					GD::bl->out.printDebug("Debug: verifyCertificate set to " + std::to_string(_verifyCertificate));
+				}
+				else if(name == "certpath")
+				{
+					_certPath = value;
+					GD::bl->out.printDebug("Debug: certPath set to " + _certPath);
+				}
+				else if(name == "keypath")
+				{
+					_keyPath = value;
+					GD::bl->out.printDebug("Debug: keyPath set to " + _keyPath);
 				}
 				else
 				{

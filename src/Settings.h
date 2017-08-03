@@ -55,6 +55,11 @@ public:
 	std::string socketPath() { return _socketPath; }
 	std::string logfilePath() { return _logfilePath; }
 	uint32_t secureMemorySize() { return _secureMemorySize; }
+	bool enableSSL() { return _enableSSL; }
+	std::string caFile() { return _caFile; }
+	bool verifyCertificate() { return _verifyCertificate; }
+	std::string certPath() { return _certPath; }
+	std::string keyPath() { return _keyPath; }
 private:
 	std::string _executablePath;
 	std::string _path;
@@ -74,6 +79,11 @@ private:
 	std::string _socketPath;
 	std::string _logfilePath;
 	uint32_t _secureMemorySize = 65536;
+	bool _enableSSL = false;
+	std::string _caFile;
+	bool _verifyCertificate = true;
+	std::string _certPath;
+	std::string _keyPath;
 
 	void reset();
 };

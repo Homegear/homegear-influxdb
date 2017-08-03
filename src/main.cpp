@@ -351,9 +351,6 @@ void startUp()
 
 		setLimits();
 
-		GD::db.reset(new Database(GD::bl.get()));
-    	GD::db->open();
-
     	if(getuid() == 0 && !GD::runAsUser.empty() && !GD::runAsGroup.empty())
     	{
 			if(GD::bl->userId == 0 || GD::bl->groupId == 0)
@@ -458,8 +455,16 @@ void startUp()
 			std::this_thread::sleep_for(std::chrono::milliseconds(10000));
 		}
 
+		GD::db.reset(new Database(GD::bl.get()));
+		while(!_shutdownQueued)
+		{
+			if(GD::db->open()) break;
+			GD::out.printWarning("Warning: Could not connect to InfluxdB. Please make sure it is running and your settings are correct.");
+			std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+		}
+
 		GD::ipcClient.reset(new IpcClient(GD::settings.socketPath() + "homegearIPC.sock"));
-		GD::ipcClient->start();
+		if(!_shutdownQueued) GD::ipcClient->start();
 
         GD::out.printMessage("Startup complete.");
 

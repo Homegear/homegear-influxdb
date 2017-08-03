@@ -116,7 +116,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		return Ipc::PVariable();
 	}
 
-	void Database::open()
+	bool Database::open()
 	{
 		try
 		{
@@ -156,6 +156,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			_queryPostHeader = "POST /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nConnection: Close\r\n";
 			_writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n";
 			_writeHeaderLowRes = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&rp=lowres HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n";
+			return true;
 		}
 		catch(const std::exception& ex)
 		{
@@ -169,6 +170,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		{
 			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 		}
+		return false;
 	}
 
 	void Database::processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry>& entry)

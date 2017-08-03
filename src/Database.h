@@ -55,7 +55,7 @@ public:
 	virtual ~Database();
 
 	// {{{ General
-		void open();
+		bool open();
 	// }}}
 
 	// {{{ History
