@@ -116,6 +116,35 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		return Ipc::PVariable();
 	}
 
+	Ipc::PVariable Database::createContinuousQuery(std::string measurement)
+	{
+		BaseLib::Http response;
+		try
+		{
+			Ipc::PVariable result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + measurement + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + measurement + "\" FROM \"" + measurement + "\" GROUP BY time(30m) END");
+			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query for measurement \"" + measurement + "\" was created successfully.");
+		}
+		catch(const std::exception& ex)
+		{
+			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+		}
+		catch(BaseLib::Exception& ex)
+		{
+			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+		}
+		catch(...)
+		{
+			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+		}
+		if(response.getContentSize() != 0 && response.getHeader().responseCode > 399)
+		{
+			Ipc::PVariable result = _jsonDecoder->decode(response.getContent());
+			if(result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
+			return result;
+		}
+		return Ipc::PVariable();
+	}
+
 	bool Database::open()
 	{
 		try

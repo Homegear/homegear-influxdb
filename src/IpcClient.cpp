@@ -33,10 +33,12 @@
 
 IpcClient::IpcClient(std::string socketPath) : IIpcClient(socketPath)
 {
+	_localRpcMethods.emplace("influxdbGetDatabase", std::bind(&IpcClient::getDatabase, this, std::placeholders::_1));
 	_localRpcMethods.emplace("influxdbSetLogging", std::bind(&IpcClient::setLogging, this, std::placeholders::_1));
 	_localRpcMethods.emplace("influxdbGetLoggedVariables", std::bind(&IpcClient::getLoggedVariables, this, std::placeholders::_1));
 	_localRpcMethods.emplace("influxdbQuery", std::bind(&IpcClient::query, this, std::placeholders::_1));
 	_localRpcMethods.emplace("influxdbWrite", std::bind(&IpcClient::write, this, std::placeholders::_1));
+	_localRpcMethods.emplace("influxdbCreateContinuousQuery", std::bind(&IpcClient::createContinuousQuery, this, std::placeholders::_1));
 	_localRpcMethods.emplace("broadcastEvent", std::bind(&IpcClient::broadcastEvent, this, std::placeholders::_1));
 }
 
@@ -59,9 +61,25 @@ void IpcClient::onConnect()
 
 		Ipc::PArray parameters = std::make_shared<Ipc::Array>();
 		parameters->reserve(2);
-		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbSetLogging"));
+		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbGetDatabase"));
 		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
 		Ipc::PVariable signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //Return value
+		parameters->back()->arrayValue->push_back(signature);
+		Ipc::PVariable result = invoke("registerRpcMethod", parameters);
+		if (result->errorStruct)
+		{
+			error = true;
+			Ipc::Output::printCritical("Critical: Could not register RPC method influxdbGetDatabase: " + result->structValue->at("faultString")->stringValue);
+		}
+		if (error) return;
+
+		parameters = std::make_shared<Ipc::Array>();
+		parameters->reserve(2);
+		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbSetLogging"));
+		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		signature->arrayValue->reserve(6);
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger64)); //1st parameter
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger64)); //2nd parameter
@@ -69,7 +87,7 @@ void IpcClient::onConnect()
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVariant)); //4th parameter
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //5th parameter
 		parameters->back()->arrayValue->push_back(signature);
-		Ipc::PVariable result = invoke("registerRpcMethod", parameters);
+		result = invoke("registerRpcMethod", parameters);
 		if (result->errorStruct)
 		{
 			error = true;
@@ -84,6 +102,7 @@ void IpcClient::onConnect()
 		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
 		parameters->back()->arrayValue->push_back(signature);
 		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		signature->arrayValue->reserve(2);
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tVoid)); //Return value
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tInteger64)); //1st parameter
 		parameters->back()->arrayValue->push_back(signature);
@@ -100,6 +119,7 @@ void IpcClient::onConnect()
 		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbQuery"));
 		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
 		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		signature->arrayValue->reserve(3);
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //1st parameter
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //2nd parameter
@@ -117,6 +137,7 @@ void IpcClient::onConnect()
 		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbWrite"));
 		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
 		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		signature->arrayValue->reserve(3);
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //1st parameter
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //2nd parameter
@@ -126,6 +147,23 @@ void IpcClient::onConnect()
 		{
 			error = true;
 			Ipc::Output::printCritical("Critical: Could not register RPC method influxdbWrite: " + result->structValue->at("faultString")->stringValue);
+		}
+		if (error) return;
+
+		parameters = std::make_shared<Ipc::Array>();
+		parameters->reserve(2);
+		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbCreateContinuousQuery"));
+		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+		signature->arrayValue->reserve(2);
+		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
+		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //1nd parameter
+		parameters->back()->arrayValue->push_back(signature);
+		result = invoke("registerRpcMethod", parameters);
+		if (result->errorStruct)
+		{
+			error = true;
+			Ipc::Output::printCritical("Critical: Could not register RPC method influxdbCreateContinuousQuery: " + result->structValue->at("faultString")->stringValue);
 		}
 		if (error) return;
 
@@ -180,6 +218,29 @@ void IpcClient::load()
 }
 
 // {{{ RPC methods
+Ipc::PVariable IpcClient::getDatabase(Ipc::PArray& parameters)
+{
+	try
+	{
+		if(!parameters->empty()) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+
+		return std::make_shared<Ipc::Variable>(GD::settings.databaseName());
+	}
+	catch (const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch (Ipc::IpcException& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch (...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+	return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
 Ipc::PVariable IpcClient::setLogging(Ipc::PArray& parameters)
 {
 	try
@@ -355,6 +416,31 @@ Ipc::PVariable IpcClient::write(Ipc::PArray& parameters)
 		if(parameters->at(1)->stringValue.empty()) return Ipc::Variable::createError(-1, "Parameter 2 is an empty string.");
 
 		return GD::db->influxWrite(parameters->at(1)->stringValue, parameters->at(0)->booleanValue);
+	}
+	catch (const std::exception& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch (Ipc::IpcException& ex)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+	}
+	catch (...)
+	{
+		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+	}
+	return Ipc::Variable::createError(-32500, "Unknown application error.");
+}
+
+Ipc::PVariable IpcClient::createContinuousQuery(Ipc::PArray& parameters)
+{
+	try
+	{
+		if(parameters->size() != 1) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+		if(parameters->at(0)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter is not of type string.");
+		if(parameters->at(0)->stringValue.empty()) return Ipc::Variable::createError(-1, "Parameter is an empty string.");
+
+		return GD::db->createContinuousQuery(parameters->at(0)->stringValue);
 	}
 	catch (const std::exception& ex)
 	{

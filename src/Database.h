@@ -66,6 +66,7 @@ public:
 		Ipc::PVariable influxQueryPost(std::string query);
 		Ipc::PVariable influxQueryGet(std::string query);
 		Ipc::PVariable influxWrite(std::string query, bool lowRes);
+		Ipc::PVariable createContinuousQuery(std::string measurement);
 	// }}}
 protected:
 	std::string _credentials;
