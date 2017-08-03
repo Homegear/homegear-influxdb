@@ -68,6 +68,7 @@ public:
 		Ipc::PVariable influxWrite(std::string query, bool lowRes);
 	// }}}
 protected:
+	std::string _credentials;
 	std::string _pingHeader;
 	std::string _queryPostHeader;
 	std::string _writeHeader;

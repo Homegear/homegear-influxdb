@@ -51,6 +51,8 @@ void Settings::reset()
 	_socketPath = _executablePath;
 	_logfilePath = "/var/log/homegear-influxdb/";
 	_secureMemorySize = 65536;
+	_username = "";
+	_password = "";
 	_enableSSL = false;
 	_caFile = "";
 	_verifyCertificate = true;
@@ -194,6 +196,16 @@ void Settings::load(std::string filename, std::string executablePath)
 					//Allow 0 => disable secure memory. 16384 is minimum size. Values smaller than 16384 are set to 16384 by gcrypt: https://gnupg.org/documentation/manuals/gcrypt-devel/Controlling-the-library.html
 					if(_secureMemorySize < 0) _secureMemorySize = 1;
 					GD::bl->out.printDebug("Debug: secureMemorySize set to " + std::to_string(_secureMemorySize));
+				}
+				else if(name == "username")
+				{
+					_username = value;
+					GD::bl->out.printDebug("Debug: username set to " + _username);
+				}
+				else if(name == "password")
+				{
+					_password = value;
+					GD::bl->out.printDebug("Debug: password set to " + _password);
 				}
 				else if(name == "enablessl")
 				{

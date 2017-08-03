@@ -55,7 +55,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 	Ipc::PVariable Database::influxQueryGet(std::string query)
 	{
 		//No try/catch to throw error in calling method
-		std::string request = "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
+		std::string request = "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n\r\n";
 		BaseLib::Http response;
 		_httpClient->sendRequest(request, response, false);
 		Ipc::PVariable result;
@@ -120,9 +120,17 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 	{
 		try
 		{
-			_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false));
+			if(!GD::settings.username().empty())
+			{
+				std::string plain = GD::settings.username() + ":" + GD::settings.password();
+				BaseLib::Base64::encode(plain, _credentials);
+				_credentials = "Authorization: Basic " + _credentials + "\r\n";
+			}
+
+			GD::out.printInfo("Info: Connecting to host " + GD::settings.hostname() + "...");
+			_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false, GD::settings.enableSSL(), GD::settings.caFile(), GD::settings.verifyCertificate(), GD::settings.certPath(), GD::settings.keyPath()));
 			_pingHeader = "HEAD /ping HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
-			_queryPostHeader = "POST /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nConnection: Close\r\n";
+			_queryPostHeader = "POST /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? std::string() : _credentials) + "Connection: Close\r\n";
 
 			BaseLib::Http response;
 			_httpClient->sendRequest(_pingHeader, response, true);
@@ -135,27 +143,47 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 
 			Ipc::PVariable result = influxQueryPost("CREATE DATABASE \"" + GD::settings.databaseName() + "\"");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Database \"" + GD::settings.databaseName() + "\" exists or was created successfully.");
-			else GD::out.printError("Error: Unknown response received to \"CREATE DATABASE\".");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"CREATE DATABASE\".");
+				return false;
+			}
 
 			result = influxQueryPost("CREATE RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d REPLICATION 1 DEFAULT");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created high resolution retention policy, if it didn't previously exist.");
-			else GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
+				return false;
+			}
 
 			result = influxQueryPost("ALTER RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d DEFAULT");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated high resolution retention policy.");
-			else GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
+				return false;
+			}
 
 			result = influxQueryPost("CREATE RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d REPLICATION 1");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created low resolution retention policy, if it didn't previously exist.");
-			else GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
+				return false;
+			}
 
 			result = influxQueryPost("ALTER RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated low resolution retention policy.");
-			else GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
+				return false;
+			}
 
-			_queryPostHeader = "POST /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nConnection: Close\r\n";
-			_writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n";
-			_writeHeaderLowRes = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&rp=lowres HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n";
+			_queryPostHeader = "POST /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
+			_writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
+			_writeHeaderLowRes = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&rp=lowres HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
 			return true;
 		}
 		catch(const std::exception& ex)
