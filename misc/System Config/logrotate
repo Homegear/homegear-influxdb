@@ -1,4 +1,4 @@
-/var/log/homegear-history/*.log /var/log/homegear-history/*.err {
+/var/log/homegear-influxdb/*.log /var/log/homegear-influxdb/*.err {
         missingok
         rotate 2
         compress
@@ -8,6 +8,6 @@
         create 640 homegear homegear
         sharedscripts
         postrotate
-        service homegear-history reload > /dev/null
+        service homegear-influxdb reload > /dev/null
         endscript
 }

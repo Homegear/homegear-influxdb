@@ -1,0 +1,13 @@
+Source: homegear-influxdb
+Maintainer: Sathya Laufer <sathya@laufers.net>
+Section: misc
+Priority: optional
+Standards-Version: 3.9.6
+Build-Depends: debhelper (>= 8), libhomegear-base (= <BASELIBVER>), libhomegear-ipc, libgcrypt20-dev, libgpg-error-dev (>= 1.10), libgnutls28-dev
+Homepage: https://homegear.eu
+
+Package: homegear-influxdb
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libhomegear-base (= <BASELIBVER>), libhomegear-ipc, homegear (>= 0.7), libgcrypt20, libgnutlsxx28, libgpg-error0 (>= 1.10), procps, insserv
+Description: Passes variable changes in Homegear to InfluxDB
+ IPC client for Homegear to pass variable changes to Influx DB

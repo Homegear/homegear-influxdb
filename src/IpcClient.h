@@ -59,7 +59,12 @@ private:
 	std::string stripNonAlphaNumeric(const std::string& s);
 
 	// {{{ RPC methods
+	Ipc::PVariable getDatabase(Ipc::PArray& parameters);
 	Ipc::PVariable setLogging(Ipc::PArray& parameters);
+	Ipc::PVariable getLoggedVariables(Ipc::PArray& parameters);
+	Ipc::PVariable query(Ipc::PArray& parameters);
+	Ipc::PVariable write(Ipc::PArray& parameters);
+	Ipc::PVariable createContinuousQuery(Ipc::PArray& parameters);
 
 	Ipc::PVariable broadcastEvent(Ipc::PArray& parameters);
 	// }}}

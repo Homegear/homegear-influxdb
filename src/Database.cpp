@@ -52,25 +52,47 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 }
 
 //{{{ General
-	Ipc::PVariable Database::influxQueryPost(std::string query)
+	Ipc::PVariable Database::influxQueryGet(std::string query)
 	{
 		//No try/catch to throw error in calling method
-		query = BaseLib::Http::encodeURL(query);
-		std::string request = _queryPostHeader + "Content-Length: " + std::to_string(query.size() + 2) + "\r\n\r\nq=" + query;
+		std::string request = "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n\r\n";
 		BaseLib::Http response;
 		_httpClient->sendRequest(request, response, false);
 		Ipc::PVariable result;
 		if(response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
 		else result.reset(new Ipc::Variable());
+		if(response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299)
+		{
+			GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
+			if(result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
+		}
 		return result;
 	}
 
-	Ipc::PVariable Database::influxWrite(std::string query)
+	Ipc::PVariable Database::influxQueryPost(std::string query)
+	{
+		//No try/catch to throw error in calling method
+		std::string encodedQuery = BaseLib::Http::encodeURL(query);
+		std::string request = _queryPostHeader + "Content-Length: " + std::to_string(encodedQuery.size() + 2) + "\r\n\r\nq=" + encodedQuery;
+		BaseLib::Http response;
+		_httpClient->sendRequest(request, response, false);
+		Ipc::PVariable result;
+		if(response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
+		else result.reset(new Ipc::Variable());
+		if(response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299)
+		{
+			GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
+			if(result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
+		}
+		return result;
+	}
+
+	Ipc::PVariable Database::influxWrite(std::string query, bool lowRes)
 	{
 		BaseLib::Http response;
 		try
 		{
-			std::string request = _writeHeader + "Content-Length: " + std::to_string(query.size()) + "\r\n\r\n" + query;
+			std::string request = (lowRes? _writeHeaderLowRes : _writeHeader) + "Content-Length: " + std::to_string(query.size()) + "\r\n\r\n" + query;
 			_httpClient->sendRequest(request, response, false);
 		}
 		catch(const std::exception& ex)
@@ -94,46 +116,13 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		return Ipc::PVariable();
 	}
 
-	void Database::open()
+	Ipc::PVariable Database::createContinuousQuery(std::string measurement)
 	{
+		BaseLib::Http response;
 		try
 		{
-			_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false));
-			_pingHeader = "HEAD /ping HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
-			_queryGetHeader = "GET /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
-			_queryPostHeader = "POST /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nConnection: Close\r\n";
-
-			BaseLib::Http response;
-			_httpClient->sendRequest(_pingHeader, response, true);
-
-			auto versionIterator = response.getHeader().fields.find("x-influxdb-version");
-			std::string version;
-			if(versionIterator != response.getHeader().fields.end()) version = versionIterator->second;
-			else version = "Unknown";
-			GD::out.printInfo("Info: Successfully connected to InfluxDB. Response code to ping request was: " + std::to_string(response.getHeader().responseCode) + ". InfluxDB version: " + version);
-
-			Ipc::PVariable result = influxQueryPost("CREATE DATABASE \"" + GD::settings.databaseName() + "\"");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Database \"" + GD::settings.databaseName() + "\" exists or was created successfully.");
-			else GD::out.printError("Error: Unknown response received to \"CREATE DATABASE\".");
-
-			result = influxQueryPost("CREATE RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d REPLICATION 1 DEFAULT");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created high resolution retention policy, if it didn't previously exist.");
-			else GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
-
-			result = influxQueryPost("ALTER RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d DEFAULT");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated high resolution retention policy.");
-			else GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
-
-			result = influxQueryPost("CREATE RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d REPLICATION 1");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created low resolution retention policy, if it didn't previously exist.");
-			else GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
-
-			result = influxQueryPost("ALTER RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated low resolution retention policy.");
-			else GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
-
-			_queryPostHeader = "POST /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\nConnection: Close\r\n";
-			_writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n";
+			Ipc::PVariable result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + measurement + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + measurement + "\" FROM \"" + measurement + "\" GROUP BY time(30m) END");
+			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query for measurement \"" + measurement + "\" was created successfully.");
 		}
 		catch(const std::exception& ex)
 		{
@@ -147,6 +136,98 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		{
 			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 		}
+		if(response.getContentSize() != 0 && response.getHeader().responseCode > 399)
+		{
+			Ipc::PVariable result = _jsonDecoder->decode(response.getContent());
+			if(result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
+			return result;
+		}
+		return Ipc::PVariable();
+	}
+
+	bool Database::open()
+	{
+		try
+		{
+			if(!GD::settings.username().empty())
+			{
+				std::string plain = GD::settings.username() + ":" + GD::settings.password();
+				BaseLib::Base64::encode(plain, _credentials);
+				_credentials = "Authorization: Basic " + _credentials + "\r\n";
+			}
+
+			GD::out.printInfo("Info: Connecting to host " + GD::settings.hostname() + "...");
+			_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false, GD::settings.enableSSL(), GD::settings.caFile(), GD::settings.verifyCertificate(), GD::settings.certPath(), GD::settings.keyPath()));
+			_pingHeader = "HEAD /ping HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
+			_queryPostHeader = "POST /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? std::string() : _credentials) + "Connection: Close\r\n";
+
+			BaseLib::Http response;
+			_httpClient->sendRequest(_pingHeader, response, true);
+
+			auto versionIterator = response.getHeader().fields.find("x-influxdb-version");
+			std::string version;
+			if(versionIterator != response.getHeader().fields.end()) version = versionIterator->second;
+			else version = "Unknown";
+			GD::out.printInfo("Info: Successfully connected to InfluxDB. Response code to ping request was: " + std::to_string(response.getHeader().responseCode) + ". InfluxDB version: " + version);
+
+			Ipc::PVariable result = influxQueryPost("CREATE DATABASE \"" + GD::settings.databaseName() + "\"");
+			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Database \"" + GD::settings.databaseName() + "\" exists or was created successfully.");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"CREATE DATABASE\".");
+				return false;
+			}
+
+			result = influxQueryPost("CREATE RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d REPLICATION 1 DEFAULT");
+			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created high resolution retention policy, if it didn't previously exist.");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
+				return false;
+			}
+
+			result = influxQueryPost("ALTER RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d DEFAULT");
+			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated high resolution retention policy.");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
+				return false;
+			}
+
+			result = influxQueryPost("CREATE RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d REPLICATION 1");
+			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created low resolution retention policy, if it didn't previously exist.");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
+				return false;
+			}
+
+			result = influxQueryPost("ALTER RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d");
+			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated low resolution retention policy.");
+			else
+			{
+				GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
+				return false;
+			}
+
+			_queryPostHeader = "POST /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
+			_writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
+			_writeHeaderLowRes = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&rp=lowres HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
+			return true;
+		}
+		catch(const std::exception& ex)
+		{
+			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+		}
+		catch(BaseLib::Exception& ex)
+		{
+			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+		}
+		catch(...)
+		{
+			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
+		}
+		return false;
 	}
 
 	void Database::processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry>& entry)
@@ -154,8 +235,14 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		std::shared_ptr<QueueEntry> queueEntry = std::dynamic_pointer_cast<QueueEntry>(entry);
 		if(!queueEntry) return;
 
-		Ipc::PVariable result = influxWrite(queueEntry->getCommand());
-		if(result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
+		Ipc::PVariable result = influxWrite(queueEntry->getCommand(), false);
+		if(result && result->errorStruct) GD::out.printError("Error creating measurement (1): " + result->structValue->at("faultString")->stringValue);
+
+		if(queueEntry->getLowres())
+		{
+			result = influxWrite(queueEntry->getCommand(), true);
+			if(result && result->errorStruct) GD::out.printError("Error creating measurement (2): " + result->structValue->at("faultString")->stringValue);
+		}
 	}
 //}}}
 
@@ -212,11 +299,15 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 	{
 		std::string tableName = getTableName(peerId, channel, variable);
 
+		influxQueryPost("DROP CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\"");
+
 		influxQueryPost("DROP MEASUREMENT \"" + tableName + "\"");
 	}
 
 	void Database::createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue)
 	{
+		GD::out.printInfo("Info: Creating measurement for variable: PeerId " + std::to_string(peerId) + ", channel " + std::to_string(channel) + ", variable " + variable + ", type " + initialValue->getTypeString(initialValue->type));
+
 		std::string tableName = getTableName(peerId, channel, variable);
 
 		if(initialValue->type != Ipc::VariableType::tBoolean && initialValue->type != Ipc::VariableType::tFloat && initialValue->type != Ipc::VariableType::tInteger && initialValue->type != Ipc::VariableType::tInteger64 && initialValue->type != Ipc::VariableType::tString && initialValue->type != Ipc::VariableType::tBase64)
@@ -226,8 +317,15 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			initialValue = encodedValue;
 		}
 
-		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + initialValue->toString() + (initialValue->type == Ipc::VariableType::tString ? "\"" : ""));
+		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + initialValue->toString() + (initialValue->type == Ipc::VariableType::tString ? "\"" : ""), false);
 		if(result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
+
+		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
+		{
+			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" GROUP BY time(30m) END");
+			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
+			else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
+		}
 	}
 
 	void Database::saveValue(uint64_t peerId, int32_t channel, std::string& variable, Ipc::PVariable value)
@@ -243,7 +341,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			value = encodedValue;
 		}
 
-		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + value->toString() + (value->type == Ipc::VariableType::tString ? "\"" : ""));
+		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + value->toString() + (value->type == Ipc::VariableType::tString ? "\"" : ""), value->type != Ipc::VariableType::tFloat && value->type != Ipc::VariableType::tInteger && value->type != Ipc::VariableType::tInteger64);
 		enqueue(0, entry);
 	}
 //}}}
