@@ -472,10 +472,10 @@ Ipc::PVariable IpcClient::broadcastEvent(Ipc::PArray& parameters)
 			{
 				for(uint32_t i = 0; i < parameters->at(2)->arrayValue->size(); ++i)
 				{
+					parameters->at(2)->arrayValue->at(i)->stringValue = stripNonAlphaNumeric(parameters->at(2)->arrayValue->at(i)->stringValue);
 					auto variableIterator = channelsIterator->second.find(parameters->at(2)->arrayValue->at(i)->stringValue);
 					if(variableIterator != channelsIterator->second.end())
 					{
-						parameters->at(2)->arrayValue->at(i)->stringValue = stripNonAlphaNumeric(parameters->at(2)->arrayValue->at(i)->stringValue);
 						GD::db->saveValue(parameters->at(0)->integerValue64, parameters->at(1)->integerValue64, parameters->at(2)->arrayValue->at(i)->stringValue, parameters->at(3)->arrayValue->at(i));
 					}
 				}
