@@ -317,7 +317,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			initialValue = encodedValue;
 		}
 
-		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + initialValue->toString() + (initialValue->type == Ipc::VariableType::tString ? "\"" : ""), false);
+		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + initialValue->toString() + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + (initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64 ? "i" : ""), false);
 		if(result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
 
 		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
