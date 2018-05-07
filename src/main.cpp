@@ -427,7 +427,7 @@ void startUp()
 					int32_t rc = flock(pidfile, LOCK_EX | LOCK_NB);
 					if(rc && errno == EWOULDBLOCK)
 					{
-						GD::out.printError("Error: Homegear is already running - Can't lock PID file.");
+						GD::out.printError("Error: Homegear InfluxDB is already running - Can't lock PID file.");
 					}
 					std::string pid(std::to_string(getpid()));
 					int32_t bytesWritten = write(pidfile, pid.c_str(), pid.size());
@@ -485,8 +485,6 @@ void startUp()
 		}
 
        	while(true) std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-
-        terminate(SIGTERM);
 	}
 	catch(const std::exception& ex)
     {
