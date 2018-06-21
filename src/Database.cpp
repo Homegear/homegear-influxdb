@@ -37,6 +37,8 @@ Database::Database(BaseLib::SharedObjects* bl) : IQueue(bl, 1, 100000)
 	_jsonDecoder = std::unique_ptr<Ipc::JsonDecoder>(new Ipc::JsonDecoder());
 	_jsonEncoder = std::unique_ptr<Ipc::JsonEncoder>(new Ipc::JsonEncoder());
 
+    _initializing = false;
+
 	startQueue(0, false, 1, 0, SCHED_OTHER);
 }
 
@@ -52,10 +54,10 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 }
 
 //{{{ General
-	Ipc::PVariable Database::influxQueryGet(std::string query)
+	Ipc::PVariable Database::influxQueryGet(std::string query, std::string additionalHttpQueryStringParameters)
 	{
 		//No try/catch to throw error in calling method
-		std::string request = "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n\r\n";
+		std::string request = "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + additionalHttpQueryStringParameters + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n\r\n";
 		BaseLib::Http response;
 		_httpClient->sendRequest(request, response, false);
 		Ipc::PVariable result;
@@ -69,11 +71,11 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		return result;
 	}
 
-	Ipc::PVariable Database::influxQueryPost(std::string query)
+	Ipc::PVariable Database::influxQueryPost(std::string query, std::string additionalHttpQueryStringParameters)
 	{
 		//No try/catch to throw error in calling method
 		std::string encodedQuery = BaseLib::Http::encodeURL(query);
-		std::string request = _queryPostHeader + "Content-Length: " + std::to_string(encodedQuery.size() + 2) + "\r\n\r\nq=" + encodedQuery;
+		std::string request = "POST /query" + (_initializing ? "" : "?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + additionalHttpQueryStringParameters) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n" + "Content-Length: " + std::to_string(encodedQuery.size() + 2) + "\r\n\r\nq=" + encodedQuery;
 		BaseLib::Http response;
 		_httpClient->sendRequest(request, response, false);
 		Ipc::PVariable result;
@@ -121,7 +123,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		BaseLib::Http response;
 		try
 		{
-			Ipc::PVariable result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + measurement + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + measurement + "\" FROM \"" + measurement + "\" GROUP BY time(30m) END");
+			Ipc::PVariable result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + measurement + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + measurement + "\" FROM \"" + measurement + "\" GROUP BY time(30m) END", "");
 			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query for measurement \"" + measurement + "\" was created successfully.");
 		}
 		catch(const std::exception& ex)
@@ -149,6 +151,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 	{
 		try
 		{
+            _initializing = true;
 			if(!GD::settings.username().empty())
 			{
 				std::string plain = GD::settings.username() + ":" + GD::settings.password();
@@ -159,7 +162,6 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			GD::out.printInfo("Info: Connecting to host " + GD::settings.hostname() + "...");
 			_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false, GD::settings.enableSSL(), GD::settings.caFile(), GD::settings.verifyCertificate(), GD::settings.certPath(), GD::settings.keyPath()));
 			_pingHeader = "HEAD /ping HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
-			_queryPostHeader = "POST /query HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? std::string() : _credentials) + "Connection: Close\r\n";
 
 			BaseLib::Http response;
 			_httpClient->sendRequest(_pingHeader, response, true);
@@ -170,7 +172,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			else version = "Unknown";
 			GD::out.printInfo("Info: Successfully connected to InfluxDB. Response code to ping request was: " + std::to_string(response.getHeader().responseCode) + ". InfluxDB version: " + version);
 
-			Ipc::PVariable result = influxQueryPost("CREATE DATABASE \"" + GD::settings.databaseName() + "\"");
+			Ipc::PVariable result = influxQueryPost("CREATE DATABASE \"" + GD::settings.databaseName() + "\"", "");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Database \"" + GD::settings.databaseName() + "\" exists or was created successfully.");
 			else
 			{
@@ -178,7 +180,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 				return false;
 			}
 
-			result = influxQueryPost("CREATE RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d REPLICATION 1 DEFAULT");
+			result = influxQueryPost("CREATE RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d REPLICATION 1 DEFAULT", "");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created high resolution retention policy, if it didn't previously exist.");
 			else
 			{
@@ -186,7 +188,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 				return false;
 			}
 
-			result = influxQueryPost("ALTER RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d DEFAULT");
+			result = influxQueryPost("ALTER RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d DEFAULT", "");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated high resolution retention policy.");
 			else
 			{
@@ -194,7 +196,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 				return false;
 			}
 
-			result = influxQueryPost("CREATE RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d REPLICATION 1");
+			result = influxQueryPost("CREATE RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d REPLICATION 1", "");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created low resolution retention policy, if it didn't previously exist.");
 			else
 			{
@@ -202,7 +204,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 				return false;
 			}
 
-			result = influxQueryPost("ALTER RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d");
+			result = influxQueryPost("ALTER RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d", "");
 			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated low resolution retention policy.");
 			else
 			{
@@ -210,9 +212,9 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 				return false;
 			}
 
-			_queryPostHeader = "POST /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
 			_writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
 			_writeHeaderLowRes = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&rp=lowres HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
+            _initializing = false;
 			return true;
 		}
 		catch(const std::exception& ex)
@@ -227,6 +229,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		{
 			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 		}
+        _initializing = false;
 		return false;
 	}
 
@@ -253,7 +256,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		{
 			std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>> variables;
 
-			Ipc::PVariable result = influxQueryPost("SHOW MEASUREMENTS ON \"" + GD::settings.databaseName() + "\"");
+			Ipc::PVariable result = influxQueryPost("SHOW MEASUREMENTS ON \"" + GD::settings.databaseName() + "\"", "");
 			auto resultsIterator = result->structValue->find("results");
 			if(resultsIterator != result->structValue->end() && !resultsIterator->second->arrayValue->empty())
 			{
@@ -299,9 +302,9 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 	{
 		std::string tableName = getTableName(peerId, channel, variable);
 
-		influxQueryPost("DROP CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\"");
+		influxQueryPost("DROP CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\"", "");
 
-		influxQueryPost("DROP MEASUREMENT \"" + tableName + "\"");
+		influxQueryPost("DROP MEASUREMENT \"" + tableName + "\"", "");
 	}
 
 	void Database::createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue)
@@ -322,7 +325,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 
 		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
 		{
-			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" GROUP BY time(30m) END");
+			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" GROUP BY time(30m) END", "");
 			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
 			else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
 		}
