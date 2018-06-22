@@ -118,12 +118,20 @@ void IpcClient::onConnect()
 		parameters->reserve(2);
 		parameters->push_back(std::make_shared<Ipc::Variable>("influxdbQuery"));
 		parameters->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray)); //Outer array
+        parameters->back()->arrayValue->reserve(2);
 		signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
 		signature->arrayValue->reserve(3);
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //1st parameter
 		signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //2nd parameter
 		parameters->back()->arrayValue->push_back(signature);
+        signature = std::make_shared<Ipc::Variable>(Ipc::VariableType::tArray); //Inner array (= signature)
+        signature->arrayValue->reserve(4);
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //Return value
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tBoolean)); //1st parameter
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tString)); //2nd parameter
+        signature->arrayValue->push_back(std::make_shared<Ipc::Variable>(Ipc::VariableType::tStruct)); //3rd parameter
+        parameters->back()->arrayValue->push_back(signature);
 		result = invoke("registerRpcMethod", parameters);
 		if (result->errorStruct)
 		{
@@ -383,13 +391,27 @@ Ipc::PVariable IpcClient::query(Ipc::PArray& parameters)
 {
 	try
 	{
-		if(parameters->size() != 2) return Ipc::Variable::createError(-1, "Wrong parameter count.");
-		if(parameters->at(0)->type != Ipc::VariableType::tBoolean) return Ipc::Variable::createError(-1, "Parameter 1 is not of type boolean.");
-		if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type string.");
+		if(parameters->size() < 2 || parameters->size() > 3) return Ipc::Variable::createError(-1, "Wrong parameter count.");
+		if(parameters->at(0)->type != Ipc::VariableType::tBoolean) return Ipc::Variable::createError(-1, "Parameter 1 is not of type Boolean.");
+		if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type String.");
 		if(parameters->at(1)->stringValue.empty()) return Ipc::Variable::createError(-1, "Parameter 2 is an empty string.");
+        if(parameters->size() == 3 && parameters->at(2)->type != Ipc::VariableType::tStruct) return Ipc::Variable::createError(-1, "Parameter 3 is not of type Struct.");
 
-		if(parameters->at(0)->booleanValue) return GD::db->influxQueryPost(parameters->at(1)->stringValue);
-		else return GD::db->influxQueryGet(parameters->at(1)->stringValue);
+        std::string additionalHttpQueryStringParameters;
+        if(parameters->size() == 3)
+        {
+            for(auto& parameter : *parameters->at(2)->structValue)
+            {
+                if(additionalHttpQueryStringParameters.capacity() < additionalHttpQueryStringParameters.size() + (parameter.first.size() * 3) + (parameter.second->stringValue.size() * 3))
+                {
+                    additionalHttpQueryStringParameters.reserve(additionalHttpQueryStringParameters.size() + (parameter.first.size() * 3) + (parameter.second->stringValue.size() * 3) + 1024);
+                }
+                additionalHttpQueryStringParameters.append("&" + BaseLib::Http::encodeURL(parameter.first) + "=" + BaseLib::Http::encodeURL(parameter.second->stringValue));
+            }
+        }
+
+		if(parameters->at(0)->booleanValue) return GD::db->influxQueryPost(parameters->at(1)->stringValue, additionalHttpQueryStringParameters);
+		else return GD::db->influxQueryGet(parameters->at(1)->stringValue, additionalHttpQueryStringParameters);
 	}
 	catch (const std::exception& ex)
 	{
