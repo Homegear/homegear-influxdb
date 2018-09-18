@@ -1,6 +1,6 @@
 [Unit]
 Description=Homegear InfluxDB
-After=homegear
+After=homegear.service
 
 [Install]
 WantedBy=multi-user.target
