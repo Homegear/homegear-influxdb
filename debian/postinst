@@ -20,6 +20,7 @@ case $1 in
 		pidof systemd
 		if [ $? -eq 0 ]; then
 			systemctl enable homegear-influxdb.service
+			service homegear-influxdb start
 		else
 			result=`ps -A | grep -c ' systemd$'`
 			command -v systemctl > /dev/null 2>&1
@@ -31,6 +32,7 @@ case $1 in
 				fi
 			else
 				systemctl enable homegear-influxdb.service
+				service homegear-influxdb start
 			fi
 		fi
 		;;
