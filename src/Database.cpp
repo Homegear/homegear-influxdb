@@ -50,7 +50,7 @@ Database::~Database()
 std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string& variable)
 {
 	std::string channelString = (channel < 0 ? "n" : std::to_string(channel));
-	return "history_" + std::to_string(peerId) + "_" + channelString + "_" + variable;
+	return BaseLib::Http::encodeURL("history_" + std::to_string(peerId) + "_" + channelString + "_" + variable);
 }
 
 //{{{ General
@@ -320,7 +320,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			initialValue = encodedValue;
 		}
 
-		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + initialValue->toString() + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + (initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64 ? "i" : ""), false);
+		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + BaseLib::Http::encodeURL(initialValue->toString()) + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + (initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64 ? "i" : ""), false);
 		if(result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
 
 		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
@@ -344,7 +344,7 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 			value = encodedValue;
 		}
 
-		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + value->toString() + (value->type == Ipc::VariableType::tString ? "\"" : "") + (value->type == Ipc::VariableType::tInteger || value->type == Ipc::VariableType::tInteger64 ? "i" : ""), value->type != Ipc::VariableType::tFloat && value->type != Ipc::VariableType::tInteger && value->type != Ipc::VariableType::tInteger64);
+		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + BaseLib::Http::encodeURL(value->toString()) + (value->type == Ipc::VariableType::tString ? "\"" : "") + (value->type == Ipc::VariableType::tInteger || value->type == Ipc::VariableType::tInteger64 ? "i" : ""), value->type != Ipc::VariableType::tFloat && value->type != Ipc::VariableType::tInteger && value->type != Ipc::VariableType::tInteger64);
 		enqueue(0, entry);
 	}
 //}}}
