@@ -101,14 +101,6 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		{
 			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 		}
-		catch(BaseLib::Exception& ex)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		catch(...)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-		}
 		if(response.getContentSize() != 0 && response.getHeader().responseCode > 399)
 		{
 			Ipc::PVariable result = _jsonDecoder->decode(response.getContent());
@@ -129,14 +121,6 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		catch(const std::exception& ex)
 		{
 			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		catch(BaseLib::Exception& ex)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		catch(...)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 		}
 		if(response.getContentSize() != 0 && response.getHeader().responseCode > 399)
 		{
@@ -221,14 +205,6 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		{
 			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 		}
-		catch(BaseLib::Exception& ex)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		catch(...)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-		}
         _initializing = false;
 		return false;
 	}
@@ -286,14 +262,6 @@ std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string
 		catch(const std::exception& ex)
 		{
 			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		catch(BaseLib::Exception& ex)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		catch(...)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 		}
 		return std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>>();
 	}
