@@ -339,8 +339,6 @@ void startUp()
             sigprocmask(SIG_BLOCK, &set, nullptr);
         }
 
-        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
-
 		if(!std::freopen((GD::settings.logfilePath() + "homegear-influxdb.log").c_str(), "a", stdout))
 		{
 			GD::out.printError("Error: Could not redirect output to log file.");
@@ -355,6 +353,10 @@ void startUp()
     	if(GD::settings.memoryDebugging()) mallopt(M_CHECK_ACTION, 3); //Print detailed error message, stack trace, and memory, and abort the program. See: http://man7.org/linux/man-pages/man3/mallopt.3.html
 
     	initGnuTls();
+
+        setLimits();
+
+        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
 
 		if(!GD::bl->io.directoryExists(GD::settings.socketPath()))
 		{
@@ -372,8 +374,6 @@ void startUp()
 				}
 			}
 		}
-
-		setLimits();
 
     	if(getuid() == 0 && !GD::runAsUser.empty() && !GD::runAsGroup.empty())
     	{
