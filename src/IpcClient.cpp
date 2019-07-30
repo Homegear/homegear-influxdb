@@ -180,17 +180,9 @@ void IpcClient::onConnect()
 		load();
 	}
 	catch (const std::exception& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (Ipc::IpcException& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-	}
+    {
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+    }
 }
 
 void IpcClient::load()
@@ -215,14 +207,6 @@ void IpcClient::load()
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 	}
-	catch (Ipc::IpcException& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-	}
 }
 
 // {{{ RPC methods
@@ -237,14 +221,6 @@ Ipc::PVariable IpcClient::getDatabase(Ipc::PArray& parameters)
 	catch (const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (Ipc::IpcException& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 	}
 	return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -303,14 +279,6 @@ Ipc::PVariable IpcClient::setLogging(Ipc::PArray& parameters)
 	catch (const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (Ipc::IpcException& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 	}
 	return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -376,14 +344,6 @@ Ipc::PVariable IpcClient::getLoggedVariables(Ipc::PArray& parameters)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 	}
-	catch (Ipc::IpcException& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-	}
 	return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -417,14 +377,6 @@ Ipc::PVariable IpcClient::query(Ipc::PArray& parameters)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 	}
-	catch (Ipc::IpcException& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-	}
 	return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -443,14 +395,6 @@ Ipc::PVariable IpcClient::write(Ipc::PArray& parameters)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 	}
-	catch (Ipc::IpcException& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
-	}
 	return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
 
@@ -467,14 +411,6 @@ Ipc::PVariable IpcClient::createContinuousQuery(Ipc::PArray& parameters)
 	catch (const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (Ipc::IpcException& ex)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-	}
-	catch (...)
-	{
-		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
 	}
 	return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
@@ -509,14 +445,6 @@ Ipc::PVariable IpcClient::broadcastEvent(Ipc::PArray& parameters)
     catch(const std::exception& ex)
     {
     	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(BaseLib::Exception& ex)
-    {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-    }
-    catch(...)
-    {
-    	GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__);
     }
     return Ipc::Variable::createError(-32500, "Unknown application error.");
 }
