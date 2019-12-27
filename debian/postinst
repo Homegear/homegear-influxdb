@@ -28,7 +28,10 @@ case $1 in
 				if test -f /usr/lib/insserv/insserv; then
 					/usr/lib/insserv/insserv homegear-influxdb
 				else
-					insserv homegear-influxdb
+					command -v insserv > /dev/null 2>&1
+					if [ $? -eq 0 ]; then
+						insserv homegear-influxdb
+					fi
 				fi
 			else
 				systemctl enable homegear-influxdb.service
