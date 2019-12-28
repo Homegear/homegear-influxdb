@@ -101,7 +101,7 @@ void signalHandlerThread()
     sigaddset(&set, SIGTTIN);
     sigaddset(&set, SIGTTOU);
 
-    while(true)
+    while(!_stopProgram)
     {
         try
         {
