@@ -620,6 +620,12 @@ int main(int argc, char* argv[])
 			}
 		// }}}
 
+		if(!GD::settings.enabled())
+        {
+		    GD::out.printMessage("Service disabled in influxdb.conf. Exiting.");
+		    exit(0);
+        }
+
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");

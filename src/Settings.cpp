@@ -37,6 +37,7 @@ Settings::Settings()
 
 void Settings::reset()
 {
+    _enabled = true;
 	_hostname = "localhost";
 	_port = 8086;
 	_databaseName = "homegear";
@@ -112,7 +113,12 @@ void Settings::load(std::string filename, std::string executablePath)
 				BaseLib::HelperFunctions::trim(name);
 				std::string value(&input[ptr]);
 				BaseLib::HelperFunctions::trim(value);
-				if(name == "hostname")
+                if(name == "enabled")
+                {
+                    _enabled = (BaseLib::HelperFunctions::toLower(value) == "true");
+                    GD::bl->out.printDebug("Debug: enabled set to " + std::to_string(_enabled));
+                }
+				else if(name == "hostname")
 				{
 					_hostname = value;
 					if(_hostname.empty()) _hostname = "localhost";
