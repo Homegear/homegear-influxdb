@@ -47,48 +47,38 @@ void startUp();
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 bool _startAsDaemon = false;
-std::mutex _shuttingDownMutex;
-std::atomic_bool _reloading;
-std::atomic_bool _startUpComplete;
-std::atomic_bool _shutdownQueued;
-bool _disposing = false;
 std::thread _signalHandlerThread;
-
-void exitProgram(int exitCode)
-{
-    _exit(exitCode);
-}
+bool _stopProgram = false;
+int _signalNumber = -1;
+std::mutex _stopProgramMutex;
+std::condition_variable _stopProgramConditionVariable;
 
 void terminateProgram(int signalNumber)
 {
-    _shuttingDownMutex.lock();
-    if(!_startUpComplete)
+    try
     {
-        GD::out.printMessage("Info: Startup is not complete yet. Queueing shutdown.");
-        _shutdownQueued = true;
-        _shuttingDownMutex.unlock();
+        GD::out.printMessage("(Shutdown) => Stopping Homegear InfluxDB (Signal: " + std::to_string(signalNumber) + ")");
+        GD::bl->shuttingDown = true;
+
+        GD::ipcClient->stop();
+        GD::ipcClient.reset();
+        GD::db.reset();
+        GD::out.printMessage("(Shutdown) => Shutdown complete.");
+
+        fclose(stdout);
+        fclose(stderr);
+        gnutls_global_deinit();
+        gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
+        gcry_control(GCRYCTL_TERM_SECMEM);
+        gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
+
         return;
     }
-    if(GD::bl->shuttingDown)
+    catch(const std::exception& ex)
     {
-        _shuttingDownMutex.unlock();
-        return;
+        GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
     }
-    GD::out.printMessage("(Shutdown) => Stopping Homegear InfluxDB (Signal: " + std::to_string(signalNumber) + ")");
-    GD::bl->shuttingDown = true;
-    _shuttingDownMutex.unlock();
-    _disposing = true;
-    GD::ipcClient->stop();
-    GD::ipcClient.reset();
-    GD::db.reset();
-    GD::out.printMessage("(Shutdown) => Shutdown complete.");
-    fclose(stdout);
-    fclose(stderr);
-    gnutls_global_deinit();
-    gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
-    gcry_control(GCRYCTL_TERM_SECMEM);
-    gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
-    _exit(0);
+    _exit(1);
 }
 
 void signalHandlerThread()
@@ -111,28 +101,28 @@ void signalHandlerThread()
     sigaddset(&set, SIGTTIN);
     sigaddset(&set, SIGTTOU);
 
-    while(true)
+    while(!_stopProgram)
     {
         try
         {
-            sigwait(&set, &signalNumber);
+            if(sigwait(&set, &signalNumber) != 0)
+            {
+                GD::out.printError("Error calling sigwait. Killing myself.");
+                kill(getpid(), SIGKILL);
+            }
             if(signalNumber == SIGTERM || signalNumber == SIGINT)
             {
-                terminateProgram(signalNumber);
+                std::unique_lock<std::mutex> stopHomegearGuard(_stopProgramMutex);
+                _stopProgram = true;
+                _signalNumber = signalNumber;
+                stopHomegearGuard.unlock();
+                _stopProgramConditionVariable.notify_all();
+                return;
             }
             else if(signalNumber == SIGHUP)
             {
-                GD::out.printMessage("Info: SIGHUP received...");
-                _shuttingDownMutex.lock();
-                GD::out.printMessage("Info: Reloading...");
-                if(!_startUpComplete)
-                {
-                    _shuttingDownMutex.unlock();
-                    GD::out.printError("Error: Cannot reload. Startup is not completed.");
-                    return;
-                }
-                _startUpComplete = false;
-                _shuttingDownMutex.unlock();
+                GD::out.printMessage("Info: SIGHUP received. Reloading...");
+
                 if(!std::freopen((GD::settings.logfilePath() + "homegear-influxdb.log").c_str(), "a", stdout))
                 {
                     GD::out.printError("Error: Could not redirect output to new log file.");
@@ -141,21 +131,14 @@ void signalHandlerThread()
                 {
                     GD::out.printError("Error: Could not redirect errors to new log file.");
                 }
-                _shuttingDownMutex.lock();
-                _startUpComplete = true;
-                if(_shutdownQueued)
-                {
-                    _shuttingDownMutex.unlock();
-                    terminateProgram(SIGTERM);
-                }
-                _shuttingDownMutex.unlock();
+
                 GD::out.printInfo("Info: Reload complete.");
             }
             else
             {
-                if(!_disposing) GD::out.printCritical("Critical: Signal " + std::to_string(signalNumber) + " received. Stopping Homegear InfluxDB...");
-                signal(signalNumber, SIG_DFL); //Reset signal handler for the current signal to default
-                kill(getpid(), signalNumber); //Generate core dump
+                GD::out.printCritical("Signal " + std::to_string(signalNumber) + " received.");
+                pthread_sigmask(SIG_SETMASK, &BaseLib::SharedObjects::defaultSignalMask, nullptr);
+                kill(getpid(), signalNumber); //Raise same signal again using the default action.
             }
         }
         catch(const std::exception& ex)
@@ -284,11 +267,11 @@ void startDaemon()
 		pid = fork();
 		if(pid < 0)
 		{
-			exitProgram(1);
+			exit(1);
 		}
 		if(pid > 0)
 		{
-			exitProgram(0);
+            exit(0);
 		}
 
 		//Set process permission
@@ -298,7 +281,7 @@ void startDaemon()
 		sid = setsid();
 		if(sid < 0)
 		{
-			exitProgram(1);
+            exit(1);
 		}
 
 		close(STDIN_FILENO);
@@ -316,28 +299,8 @@ void startUp()
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");
-			exitProgram(1);
+			exit(1);
 		}
-
-        {
-            sigset_t set{};
-            sigemptyset(&set);
-            sigaddset(&set, SIGHUP);
-            sigaddset(&set, SIGTERM);
-            sigaddset(&set, SIGINT);
-            sigaddset(&set, SIGABRT);
-            sigaddset(&set, SIGSEGV);
-            sigaddset(&set, SIGQUIT);
-            sigaddset(&set, SIGILL);
-            sigaddset(&set, SIGFPE);
-            sigaddset(&set, SIGALRM);
-            sigaddset(&set, SIGUSR1);
-            sigaddset(&set, SIGUSR2);
-            sigaddset(&set, SIGTSTP);
-            sigaddset(&set, SIGTTIN);
-            sigaddset(&set, SIGTTOU);
-            sigprocmask(SIG_BLOCK, &set, nullptr);
-        }
 
 		if(!std::freopen((GD::settings.logfilePath() + "homegear-influxdb.log").c_str(), "a", stdout))
 		{
@@ -356,18 +319,25 @@ void startUp()
 
         setLimits();
 
-        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
-
-		if(!GD::bl->io.directoryExists(GD::settings.socketPath()))
+        if(GD::runAsUser.empty()) GD::runAsUser = GD::settings.runAsUser();
+        if(GD::runAsGroup.empty()) GD::runAsGroup = GD::settings.runAsGroup();
+        if((!GD::runAsUser.empty() && GD::runAsGroup.empty()) || (!GD::runAsGroup.empty() && GD::runAsUser.empty()))
+        {
+            GD::out.printCritical("Critical: You only provided a user OR a group for Homegear to run as. Please specify both.");
+            exit(1);
+        }
+        uid_t userId = GD::bl->hf.userId(GD::runAsUser);
+        gid_t groupId = GD::bl->hf.groupId(GD::runAsGroup);
+		if(!BaseLib::Io::directoryExists(GD::settings.socketPath()))
 		{
-			if(!GD::bl->io.createDirectory(GD::settings.socketPath(), S_IRWXU | S_IRWXG))
+			if(!BaseLib::Io::createDirectory(GD::settings.socketPath(), S_IRWXU | S_IRWXG))
 			{
 				GD::out.printCritical("Critical: Directory \"" + GD::settings.socketPath() + "\" does not exist and cannot be created.");
 				exit(1);
 			}
-			if(GD::bl->userId != 0 || GD::bl->groupId != 0)
+			if(userId != 0 || groupId != 0)
 			{
-				if(chown(GD::settings.socketPath().c_str(), GD::bl->userId, GD::bl->groupId) == -1)
+				if(chown(GD::settings.socketPath().c_str(), userId, groupId) == -1)
 				{
 					GD::out.printCritical("Critical: Could not set permissions on directory \"" + GD::settings.socketPath() + "\"");
 					exit(1);
@@ -380,7 +350,7 @@ void startUp()
 			if(GD::bl->userId == 0 || GD::bl->groupId == 0)
 			{
 				GD::out.printCritical("Could not drop privileges. User name or group name is not valid.");
-				exitProgram(1);
+                exit(1);
 			}
 			GD::out.printInfo("Info: Dropping privileges to user " + GD::runAsUser + " (" + std::to_string(GD::bl->userId) + ") and group " + GD::runAsGroup + " (" + std::to_string(GD::bl->groupId) + ")");
 
@@ -398,19 +368,19 @@ void startUp()
 			if(setgid(GD::bl->groupId) != 0)
 			{
 				GD::out.printCritical("Critical: Could not drop group privileges.");
-				exitProgram(1);
+                exit(1);
 			}
 
 			if(setgroups(supplementaryGroups.size(), supplementaryGroups.data()) != 0)
 			{
 				GD::out.printCritical("Critical: Could not set supplementary groups: " + std::string(strerror(errno)));
-				exitProgram(1);
+                exit(1);
 			}
 
 			if(setuid(GD::bl->userId) != 0)
 			{
 				GD::out.printCritical("Critical: Could not drop user privileges.");
-				exitProgram(1);
+                exit(1);
 			}
 
 			//Core dumps are disabled by setuid. Enable them again.
@@ -472,35 +442,35 @@ void startUp()
 		}
 
 		GD::db.reset(new Database(GD::bl.get()));
-		while(!_shutdownQueued)
+		while(!_stopProgram)
 		{
 			if(GD::db->open()) break;
 			GD::out.printWarning("Warning: Could not connect to InfluxdB. Please make sure it is running and your settings are correct.");
-			std::this_thread::sleep_for(std::chrono::milliseconds(10000));
+            std::unique_lock<std::mutex> stopHomegearGuard(_stopProgramMutex);
+            _stopProgramConditionVariable.wait_for(stopHomegearGuard, std::chrono::seconds(10));
 		}
 
 		GD::ipcClient.reset(new IpcClient(GD::settings.socketPath() + "homegearIPC.sock"));
-		if(!_shutdownQueued) GD::ipcClient->start();
+		GD::ipcClient->start();
+
+        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
 
         GD::out.printMessage("Startup complete.");
 
         GD::bl->booting = false;
-
-        _shuttingDownMutex.lock();
-		_startUpComplete = true;
-		if(_shutdownQueued)
-		{
-			_shuttingDownMutex.unlock();
-			terminateProgram(SIGTERM);
-		}
-		_shuttingDownMutex.unlock();
 
 		if(BaseLib::Io::fileExists(GD::settings.workingDirectory() + "core"))
 		{
 			GD::out.printError("Error: A core file exists in Homegear InfluxDB's working directory (\"" + GD::settings.workingDirectory() + "core" + "\"). Please send this file to the Homegear team including information about your system (Linux distribution, CPU architecture), the Homegear InfluxDB version, the current log files and information what might've caused the error.");
 		}
 
-       	while(true) std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        while(!_stopProgram)
+        {
+            std::unique_lock<std::mutex> stopHomegearGuard(_stopProgramMutex);
+            _stopProgramConditionVariable.wait(stopHomegearGuard);
+        }
+
+        terminateProgram(_signalNumber);
 	}
 	catch(const std::exception& ex)
     {
@@ -512,10 +482,6 @@ int main(int argc, char* argv[])
 {
 	try
     {
-		_reloading = false;
-		_startUpComplete = false;
-		_shutdownQueued = false;
-
     	getExecutablePath(argc, argv);
     	GD::bl.reset(new BaseLib::SharedObjects());
     	GD::out.init(GD::bl.get());
@@ -609,6 +575,32 @@ int main(int argc, char* argv[])
     		}
     	}
 
+        {
+            //Block the signals below during start up
+            //Needs to be called after initialization of GD::bl as GD::bl reads the current (default) signal mask.
+            sigset_t set{};
+            sigemptyset(&set);
+            sigaddset(&set, SIGHUP);
+            sigaddset(&set, SIGTERM);
+            sigaddset(&set, SIGINT);
+            sigaddset(&set, SIGABRT);
+            sigaddset(&set, SIGSEGV);
+            sigaddset(&set, SIGQUIT);
+            sigaddset(&set, SIGILL);
+            sigaddset(&set, SIGFPE);
+            sigaddset(&set, SIGALRM);
+            sigaddset(&set, SIGUSR1);
+            sigaddset(&set, SIGUSR2);
+            sigaddset(&set, SIGTSTP);
+            sigaddset(&set, SIGTTIN);
+            sigaddset(&set, SIGTTOU);
+            if(pthread_sigmask(SIG_BLOCK, &set, nullptr) < 0)
+            {
+                std::cerr << "SIG_BLOCK error." << std::endl;
+                exit(1);
+            }
+        }
+
     	// {{{ Load settings
 			GD::out.printInfo("Loading settings from " + GD::configPath + "influxdb.conf");
 			GD::settings.load(GD::configPath + "influxdb.conf", GD::executablePath);
@@ -628,22 +620,27 @@ int main(int argc, char* argv[])
 			}
 		// }}}
 
+		if(!GD::settings.enabled())
+        {
+		    GD::out.printMessage("Service disabled in influxdb.conf. Exiting.");
+		    exit(0);
+        }
+
 		if((chdir(GD::settings.workingDirectory().c_str())) < 0)
 		{
 			GD::out.printError("Could not change working directory to " + GD::settings.workingDirectory() + ".");
-			exitProgram(1);
+			exit(1);
 		}
 
 		if(_startAsDaemon) startDaemon();
     	startUp();
 
+        GD::bl->threadManager.join(_signalHandlerThread);
         return 0;
     }
     catch(const std::exception& ex)
 	{
 		GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
 	}
-	terminateProgram(SIGTERM);
-
-    return 1;
+	_exit(1);
 }

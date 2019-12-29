@@ -41,6 +41,7 @@ public:
 	void load(std::string filename, std::string executablePath);
 	bool changed();
 
+	bool enabled() { return _enabled; }
 	std::string hostname() { return _hostname; }
 	int32_t port() { return _port; }
 	std::string databaseName() { return _databaseName; }
@@ -67,6 +68,7 @@ private:
 	std::string _path;
 	int32_t _lastModified = -1;
 
+	bool _enabled = true;
 	std::string _hostname;
 	int32_t _port = 8086;
 	std::string _databaseName;
