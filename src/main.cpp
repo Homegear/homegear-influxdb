@@ -442,6 +442,10 @@ void startUp()
 		}
 
 		GD::db.reset(new Database(GD::bl.get()));
+        GD::ipcClient.reset(new IpcClient(GD::settings.socketPath() + "homegearIPC.sock"));
+
+        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
+
 		while(!_stopProgram)
 		{
 			if(GD::db->open()) break;
@@ -450,10 +454,7 @@ void startUp()
             _stopProgramConditionVariable.wait_for(stopHomegearGuard, std::chrono::seconds(10));
 		}
 
-		GD::ipcClient.reset(new IpcClient(GD::settings.socketPath() + "homegearIPC.sock"));
 		GD::ipcClient->start();
-
-        GD::bl->threadManager.start(_signalHandlerThread, true, &signalHandlerThread);
 
         GD::out.printMessage("Startup complete.");
 
