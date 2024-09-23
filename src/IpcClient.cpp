@@ -389,7 +389,7 @@ Ipc::PVariable IpcClient::write(Ipc::PArray& parameters)
 		if(parameters->at(1)->type != Ipc::VariableType::tString) return Ipc::Variable::createError(-1, "Parameter 2 is not of type string.");
 		if(parameters->at(1)->stringValue.empty()) return Ipc::Variable::createError(-1, "Parameter 2 is an empty string.");
 
-		return GD::db->influxWrite(parameters->at(1)->stringValue, parameters->at(0)->booleanValue);
+		return GD::db->queueInfluxWrite(parameters->at(1)->stringValue, parameters->at(0)->booleanValue);
 	}
 	catch (const std::exception& ex)
 	{
