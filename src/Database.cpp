@@ -31,288 +31,273 @@
 #include "Database.h"
 #include "GD/GD.h"
 
-Database::Database(BaseLib::SharedObjects* bl) : IQueue(bl, 1, 100000)
-{
-	_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port()));
-	_jsonDecoder = std::unique_ptr<Ipc::JsonDecoder>(new Ipc::JsonDecoder());
-	_jsonEncoder = std::unique_ptr<Ipc::JsonEncoder>(new Ipc::JsonEncoder());
+Database::Database(BaseLib::SharedObjects *bl) : IQueue(bl, 1, 100000) {
+  _httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port()));
+  _jsonDecoder = std::unique_ptr<Ipc::JsonDecoder>(new Ipc::JsonDecoder());
+  _jsonEncoder = std::unique_ptr<Ipc::JsonEncoder>(new Ipc::JsonEncoder());
 
-    _initializing = false;
-
-	startQueue(0, false, 1, 0, SCHED_OTHER);
+  startQueue(0, false, 1, 0, SCHED_OTHER);
 }
 
-Database::~Database()
-{
-	stopQueue(0);
+Database::~Database() {
+  stopQueue(0);
 }
 
-std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string& variable)
-{
-	std::string channelString = (channel < 0 ? "n" : std::to_string(channel));
-	return BaseLib::Http::encodeURL("history_" + std::to_string(peerId) + "_" + channelString + "_" + variable);
+std::string Database::getTableName(uint64_t peerId, int32_t channel, std::string &variable) {
+  std::string channelString = (channel < 0 ? "n" : std::to_string(channel));
+  return BaseLib::Http::encodeURL("history_" + std::to_string(peerId) + "_" + channelString + "_" + variable);
 }
 
 //{{{ General
-	Ipc::PVariable Database::influxQueryGet(std::string query, std::string additionalHttpQueryStringParameters)
-	{
-		//No try/catch to throw error in calling method
-		std::string request = "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + additionalHttpQueryStringParameters + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n\r\n";
-		BaseLib::Http response;
-		_httpClient->sendRequest(request, response, false);
-		Ipc::PVariable result;
-		if(response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
-		else result.reset(new Ipc::Variable());
-		if(response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299)
-		{
-			GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
-			if(result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
-		}
-		return result;
-	}
+Ipc::PVariable Database::influxQueryGet(const std::string &query, const std::string &additionalHttpQueryStringParameters) {
+  //No try/catch to throw error in calling method
+  std::string request =
+      "GET /query?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + additionalHttpQueryStringParameters + "&q=" + BaseLib::Http::encodeURL(query) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":"
+          + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n\r\n";
+  BaseLib::Http response;
+  _httpClient->sendRequest(request, response, false);
+  Ipc::PVariable result;
+  if (response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
+  else result.reset(new Ipc::Variable());
+  if (response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299) {
+    GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
+    if (result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
+  }
+  return result;
+}
 
-	Ipc::PVariable Database::influxQueryPost(std::string query, std::string additionalHttpQueryStringParameters)
-	{
-		//No try/catch to throw error in calling method
-		std::string encodedQuery = BaseLib::Http::encodeURL(query);
-		std::string request = "POST /query" + (_initializing ? "" : "?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + additionalHttpQueryStringParameters) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n" + "Content-Length: " + std::to_string(encodedQuery.size() + 2) + "\r\n\r\nq=" + encodedQuery;
-		BaseLib::Http response;
-		_httpClient->sendRequest(request, response, false);
-		Ipc::PVariable result;
-		if(response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
-		else result.reset(new Ipc::Variable());
-		if(response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299)
-		{
-			GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
-			if(result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
-		}
-		return result;
-	}
+Ipc::PVariable Database::influxQueryPost(const std::string &query, const std::string &additionalHttpQueryStringParameters) {
+  //No try/catch to throw error in calling method
+  std::string encodedQuery = BaseLib::Http::encodeURL(query);
+  std::string request = "POST /query" + (_initializing ? "" : "?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + additionalHttpQueryStringParameters) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":"
+      + std::to_string(GD::settings.port()) + "\r\nContent-Type: application/x-www-form-urlencoded\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n" + "Content-Length: " + std::to_string(encodedQuery.size() + 2)
+      + "\r\n\r\nq=" + encodedQuery;
+  BaseLib::Http response;
+  _httpClient->sendRequest(request, response, false);
+  Ipc::PVariable result;
+  if (response.getContentSize() > 0) result = _jsonDecoder->decode(response.getContent());
+  else result.reset(new Ipc::Variable());
+  if (response.getHeader().responseCode < 200 || response.getHeader().responseCode > 299) {
+    GD::out.printError("Error: Code " + std::to_string(response.getHeader().responseCode) + " received in response to query " + query + ". Response content: " + std::string(response.getContent().data(), response.getContentSize()));
+    if (result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
+  }
+  return result;
+}
 
-	Ipc::PVariable Database::influxWrite(std::string query, bool lowRes)
-	{
-		BaseLib::Http response;
-		try
-		{
-			std::string request = (lowRes? _writeHeaderLowRes : _writeHeader) + "Content-Length: " + std::to_string(query.size()) + "\r\n\r\n" + query;
-			_httpClient->sendRequest(request, response, false);
-		}
-		catch(const std::exception& ex)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		if(response.getContentSize() != 0 && response.getHeader().responseCode > 399)
-		{
-			Ipc::PVariable result = _jsonDecoder->decode(response.getContent());
-			if(result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
-			return result;
-		}
-		return Ipc::PVariable();
-	}
+Ipc::PVariable Database::influxWrite(const std::string &query, bool lowRes) {
+  BaseLib::Http response;
+  try {
+    std::string request = (lowRes ? _writeHeaderLowRes : _writeHeader) + "Content-Length: " + std::to_string(query.size()) + "\r\n\r\n" + query;
+    _httpClient->sendRequest(request, response, false);
+  }
+  catch (const std::exception &ex) {
+    GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+  }
+  if (response.getContentSize() != 0 && response.getHeader().responseCode > 399) {
+    Ipc::PVariable result = _jsonDecoder->decode(response.getContent());
+    if (result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
+    return result;
+  }
+  return {};
+}
 
-	Ipc::PVariable Database::createContinuousQuery(std::string measurement)
-	{
-		BaseLib::Http response;
-		try
-		{
-			Ipc::PVariable result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + measurement + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + measurement + "\" FROM \"" + measurement + "\" GROUP BY time(30m) END", "");
-			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query for measurement \"" + measurement + "\" was created successfully.");
-		}
-		catch(const std::exception& ex)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		if(response.getContentSize() != 0 && response.getHeader().responseCode > 399)
-		{
-			Ipc::PVariable result = _jsonDecoder->decode(response.getContent());
-			if(result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
-			return result;
-		}
-		return Ipc::PVariable();
-	}
+Ipc::PVariable Database::queueInfluxWrite(const std::string &query, bool low_res) {
+  try {
+    std::shared_ptr<BaseLib::IQueueEntry> queue_entry = std::make_shared<QueueEntry>(query, low_res);
+    enqueue(0, queue_entry);
+  }
+  catch (const std::exception &ex) {
+    GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+  }
+  return {};
+}
 
-	bool Database::open()
-	{
-		try
-		{
-            _initializing = true;
-			if(!GD::settings.username().empty())
-			{
-				std::string plain = GD::settings.username() + ":" + GD::settings.password();
-				BaseLib::Base64::encode(plain, _credentials);
-				_credentials = "Authorization: Basic " + _credentials + "\r\n";
-			}
+Ipc::PVariable Database::createContinuousQuery(const std::string &measurement) {
+  BaseLib::Http response;
+  try {
+    Ipc::PVariable result = influxQueryPost(
+        "CREATE CONTINUOUS QUERY \"cq_" + measurement + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + measurement + "\" FROM \"" + measurement
+            + "\" GROUP BY time(30m) END", "");
+    if (result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query for measurement \"" + measurement + "\" was created successfully.");
+  }
+  catch (const std::exception &ex) {
+    GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+  }
+  if (response.getContentSize() != 0 && response.getHeader().responseCode > 399) {
+    Ipc::PVariable result = _jsonDecoder->decode(response.getContent());
+    if (result->structValue->find("error") != result->structValue->end()) result = Ipc::Variable::createError(-1, result->structValue->at("error")->stringValue);
+    return result;
+  }
+  return {};
+}
 
-			GD::out.printInfo("Info: Connecting to host " + GD::settings.hostname() + "...");
-			_httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false, GD::settings.enableSSL(), GD::settings.caFile(), GD::settings.verifyCertificate(), GD::settings.certPath(), GD::settings.keyPath()));
-			_pingHeader = "HEAD /ping HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
+bool Database::open() {
+  try {
+    _initializing = true;
+    if (!GD::settings.username().empty()) {
+      std::string plain = GD::settings.username() + ":" + GD::settings.password();
+      BaseLib::Base64::encode(plain, _credentials);
+      _credentials = "Authorization: Basic " + _credentials + "\r\n";
+    }
 
-			BaseLib::Http response;
-			_httpClient->sendRequest(_pingHeader, response, true);
+    GD::out.printInfo("Info: Connecting to host " + GD::settings.hostname() + "...");
+    _httpClient.reset(new BaseLib::HttpClient(_bl, GD::settings.hostname(), GD::settings.port(), false, GD::settings.enableSSL(), GD::settings.caFile(), GD::settings.verifyCertificate(), GD::settings.certPath(), GD::settings.keyPath()));
+    _pingHeader = "HEAD /ping HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\nConnection: Close\r\n\r\n";
 
-			auto versionIterator = response.getHeader().fields.find("x-influxdb-version");
-			std::string version;
-			if(versionIterator != response.getHeader().fields.end()) version = versionIterator->second;
-			else version = "Unknown";
-			GD::out.printInfo("Info: Successfully connected to InfluxDB. Response code to ping request was: " + std::to_string(response.getHeader().responseCode) + ". InfluxDB version: " + version);
+    BaseLib::Http response;
+    _httpClient->sendRequest(_pingHeader, response, true);
 
-			Ipc::PVariable result = influxQueryPost("CREATE DATABASE \"" + GD::settings.databaseName() + "\"", "");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Database \"" + GD::settings.databaseName() + "\" exists or was created successfully.");
-			else
-			{
-				GD::out.printError("Error: Unknown response received to \"CREATE DATABASE\".");
-				return false;
-			}
+    auto versionIterator = response.getHeader().fields.find("x-influxdb-version");
+    std::string version;
+    if (versionIterator != response.getHeader().fields.end()) version = versionIterator->second;
+    else version = "Unknown";
+    GD::out.printInfo("Info: Successfully connected to InfluxDB. Response code to ping request was: " + std::to_string(response.getHeader().responseCode) + ". InfluxDB version: " + version);
 
-			result = influxQueryPost("CREATE RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d REPLICATION 1 DEFAULT", "");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created high resolution retention policy, if it didn't previously exist.");
-			else
-			{
-				GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
-				return false;
-			}
+    Ipc::PVariable result = influxQueryPost("CREATE DATABASE \"" + GD::settings.databaseName() + "\"", "");
+    if (result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Database \"" + GD::settings.databaseName() + "\" exists or was created successfully.");
+    else {
+      GD::out.printError("Error: Unknown response received to \"CREATE DATABASE\".");
+      return false;
+    }
 
-			result = influxQueryPost("ALTER RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d DEFAULT", "");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated high resolution retention policy.");
-			else
-			{
-				GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
-				return false;
-			}
+    result = influxQueryPost("CREATE RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d REPLICATION 1 DEFAULT", "");
+    if (result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created high resolution retention policy, if it didn't previously exist.");
+    else {
+      GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
+      return false;
+    }
 
-			result = influxQueryPost("CREATE RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d REPLICATION 1", "");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created low resolution retention policy, if it didn't previously exist.");
-			else
-			{
-				GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
-				return false;
-			}
+    result = influxQueryPost("ALTER RETENTION POLICY \"highres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.highResolutionRetentionTime()) + "d DEFAULT", "");
+    if (result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated high resolution retention policy.");
+    else {
+      GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
+      return false;
+    }
 
-			result = influxQueryPost("ALTER RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d", "");
-			if(result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated low resolution retention policy.");
-			else
-			{
-				GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
-				return false;
-			}
+    result = influxQueryPost("CREATE RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d REPLICATION 1", "");
+    if (result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully created low resolution retention policy, if it didn't previously exist.");
+    else {
+      GD::out.printError("Error: Unknown response received to \"CREATE RETENTION POLICY\".");
+      return false;
+    }
 
-			_writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
-			_writeHeaderLowRes = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&rp=lowres HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n" + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
-            _initializing = false;
-			return true;
-		}
-		catch(const std::exception& ex)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-        _initializing = false;
-		return false;
-	}
+    result = influxQueryPost("ALTER RETENTION POLICY \"lowres\" ON \"" + GD::settings.databaseName() + "\" DURATION " + std::to_string(GD::settings.lowResolutionRetentionTime()) + "d", "");
+    if (result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Successfully updated low resolution retention policy.");
+    else {
+      GD::out.printError("Error: Unknown response received to \"ALTER RETENTION POLICY\".");
+      return false;
+    }
 
-	void Database::processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry>& entry)
-	{
-		std::shared_ptr<QueueEntry> queueEntry = std::dynamic_pointer_cast<QueueEntry>(entry);
-		if(!queueEntry) return;
+    _writeHeader = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + " HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n"
+        + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
+    _writeHeaderLowRes = "POST /write?db=" + BaseLib::Http::encodeURL(GD::settings.databaseName()) + "&rp=lowres HTTP/1.1\r\nUser-Agent: Homegear\r\nHost: " + GD::settings.hostname() + ":" + std::to_string(GD::settings.port()) + "\r\n"
+        + (GD::settings.username().empty() ? "" : _credentials) + "Connection: Close\r\n";
+    _initializing = false;
+    return true;
+  }
+  catch (const std::exception &ex) {
+    GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+  }
+  _initializing = false;
+  return false;
+}
 
-		Ipc::PVariable result = influxWrite(queueEntry->getCommand(), false);
-		if(result && result->errorStruct) GD::out.printError("Error creating measurement (1): " + result->structValue->at("faultString")->stringValue);
+void Database::processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry> &entry) {
+  std::shared_ptr<QueueEntry> queueEntry = std::dynamic_pointer_cast<QueueEntry>(entry);
+  if (!queueEntry) return;
 
-		if(queueEntry->getLowres())
-		{
-			result = influxWrite(queueEntry->getCommand(), true);
-			if(result && result->errorStruct) GD::out.printError("Error creating measurement (2): " + result->structValue->at("faultString")->stringValue);
-		}
-	}
+  Ipc::PVariable result = influxWrite(queueEntry->getCommand(), false);
+  if (result && result->errorStruct) GD::out.printError("Error creating measurement (1): " + result->structValue->at("faultString")->stringValue);
+
+  if (queueEntry->getLowres()) {
+    result = influxWrite(queueEntry->getCommand(), true);
+    if (result && result->errorStruct) GD::out.printError("Error creating measurement (2): " + result->structValue->at("faultString")->stringValue);
+  }
+}
 //}}}
 
 //{{{ History
-	std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>> Database::getVariables()
-	{
-		try
-		{
-			std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>> variables;
+std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>> Database::getVariables() {
+  try {
+    std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>> variables;
 
-			Ipc::PVariable result = influxQueryPost("SHOW MEASUREMENTS ON \"" + GD::settings.databaseName() + "\"", "");
-			auto resultsIterator = result->structValue->find("results");
-			if(resultsIterator != result->structValue->end() && !resultsIterator->second->arrayValue->empty())
-			{
-				auto seriesIterator = resultsIterator->second->arrayValue->at(0)->structValue->find("series");
-				if(seriesIterator != resultsIterator->second->arrayValue->at(0)->structValue->end() && !seriesIterator->second->arrayValue->empty())
-				{
-					auto valuesIterator = seriesIterator->second->arrayValue->at(0)->structValue->find("values");
-					if(valuesIterator != seriesIterator->second->arrayValue->at(0)->structValue->end())
-					{
-						for(auto& row : *valuesIterator->second->arrayValue)
-						{
-							for(auto& col : *row->arrayValue)
-							{
-								std::vector<std::string> fields = BaseLib::HelperFunctions::splitAll(col->stringValue, '_');
-								if(fields.size() != 4 || fields.at(1).empty() || fields.at(2).empty() || fields.at(3).empty()) continue;
-								uint64_t peerId = BaseLib::Math::getNumber64(fields.at(1));
-								int32_t channel = fields.at(2) == "n" ? -1 : BaseLib::Math::getNumber(fields.at(2));
-								variables[peerId][channel].emplace(fields.at(3));
-							}
-						}
-					}
-				}
-			}
+    Ipc::PVariable result = influxQueryPost("SHOW MEASUREMENTS ON \"" + GD::settings.databaseName() + "\"", "");
+    auto resultsIterator = result->structValue->find("results");
+    if (resultsIterator != result->structValue->end() && !resultsIterator->second->arrayValue->empty()) {
+      auto seriesIterator = resultsIterator->second->arrayValue->at(0)->structValue->find("series");
+      if (seriesIterator != resultsIterator->second->arrayValue->at(0)->structValue->end() && !seriesIterator->second->arrayValue->empty()) {
+        auto valuesIterator = seriesIterator->second->arrayValue->at(0)->structValue->find("values");
+        if (valuesIterator != seriesIterator->second->arrayValue->at(0)->structValue->end()) {
+          for (auto &row: *valuesIterator->second->arrayValue) {
+            for (auto &col: *row->arrayValue) {
+              std::vector<std::string> fields = BaseLib::HelperFunctions::splitAll(col->stringValue, '_');
+              if (fields.size() != 4 || fields.at(1).empty() || fields.at(2).empty() || fields.at(3).empty()) continue;
+              uint64_t peerId = BaseLib::Math::getNumber64(fields.at(1));
+              int32_t channel = fields.at(2) == "n" ? -1 : BaseLib::Math::getNumber(fields.at(2));
+              variables[peerId][channel].emplace(fields.at(3));
+            }
+          }
+        }
+      }
+    }
 
-			return variables;
-		}
-		catch(const std::exception& ex)
-		{
-			GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
-		}
-		return std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>>();
-	}
+    return variables;
+  }
+  catch (const std::exception &ex) {
+    GD::out.printEx(__FILE__, __LINE__, __PRETTY_FUNCTION__, ex.what());
+  }
+  return {};
+}
 
-	void Database::deleteVariableTable(uint64_t peerId, int32_t channel, std::string variable)
-	{
-		std::string tableName = getTableName(peerId, channel, variable);
+void Database::deleteVariableTable(uint64_t peerId, int32_t channel, std::string variable) {
+  std::string tableName = getTableName(peerId, channel, variable);
 
-		influxQueryPost("DROP CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\"", "");
+  influxQueryPost("DROP CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\"", "");
 
-		influxQueryPost("DROP MEASUREMENT \"" + tableName + "\"", "");
-	}
+  influxQueryPost("DROP MEASUREMENT \"" + tableName + "\"", "");
+}
 
-	void Database::createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue)
-	{
-		GD::out.printInfo("Info: Creating measurement for variable: PeerId " + std::to_string(peerId) + ", channel " + std::to_string(channel) + ", variable " + variable + ", type " + initialValue->getTypeString(initialValue->type));
+void Database::createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue) {
+  GD::out.printInfo("Info: Creating measurement for variable: PeerId " + std::to_string(peerId) + ", channel " + std::to_string(channel) + ", variable " + variable + ", type " + initialValue->getTypeString(initialValue->type));
 
-		std::string tableName = getTableName(peerId, channel, variable);
+  std::string tableName = getTableName(peerId, channel, variable);
 
-		if(initialValue->type != Ipc::VariableType::tBoolean && initialValue->type != Ipc::VariableType::tFloat && initialValue->type != Ipc::VariableType::tInteger && initialValue->type != Ipc::VariableType::tInteger64 && initialValue->type != Ipc::VariableType::tString && initialValue->type != Ipc::VariableType::tBase64)
-		{
-			Ipc::PVariable encodedValue = std::make_shared<Ipc::Variable>(Ipc::VariableType::tString);
-			encodedValue->stringValue = _jsonEncoder->getString(initialValue);
-			initialValue = encodedValue;
-		}
+  if (initialValue->type != Ipc::VariableType::tBoolean && initialValue->type != Ipc::VariableType::tFloat && initialValue->type != Ipc::VariableType::tInteger && initialValue->type != Ipc::VariableType::tInteger64
+      && initialValue->type != Ipc::VariableType::tString && initialValue->type != Ipc::VariableType::tBase64) {
+    Ipc::PVariable encodedValue = std::make_shared<Ipc::Variable>(Ipc::VariableType::tString);
+    encodedValue->stringValue = _jsonEncoder->getString(initialValue);
+    initialValue = encodedValue;
+  }
 
-		Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + BaseLib::Http::encodeURL(initialValue->toString()) + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + (initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64 ? "i" : ""), false);
-		if(result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
+  Ipc::PVariable result = influxWrite(tableName + " value=" + (initialValue->type == Ipc::VariableType::tString ? "\"" : "") + BaseLib::Http::encodeURL(initialValue->toString()) + (initialValue->type == Ipc::VariableType::tString ? "\"" : "")
+                                          + (initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64 ? "i" : ""), false);
+  if (result && result->errorStruct) GD::out.printError("Error creating measurement: " + result->structValue->at("faultString")->stringValue);
 
-		if(initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64)
-		{
-			result = influxQueryPost("CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName + "\" GROUP BY time(30m) END", "");
-			if(result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
-			else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
-		}
-	}
+  if (initialValue->type == Ipc::VariableType::tFloat || initialValue->type == Ipc::VariableType::tInteger || initialValue->type == Ipc::VariableType::tInteger64) {
+    result = influxQueryPost(
+        "CREATE CONTINUOUS QUERY \"cq_" + tableName + "\" ON \"" + GD::settings.databaseName() + "\" BEGIN SELECT mean(value) AS value,min(value) AS value_min,max(value) AS value_max INTO \"lowres\".\"" + tableName + "\" FROM \"" + tableName
+            + "\" GROUP BY time(30m) END", "");
+    if (result && result->structValue->find("results") != result->structValue->end()) GD::out.printInfo("Info: Continuous query was created successfully.");
+    else GD::out.printError("Error: Unknown response received to \"CREATE CONTINUOUS QUERY\".");
+  }
+}
 
-	void Database::saveValue(uint64_t peerId, int32_t channel, std::string& variable, Ipc::PVariable value)
-	{
-		if(variable.empty() || !value) return;
+void Database::saveValue(uint64_t peerId, int32_t channel, std::string &variable, Ipc::PVariable value) {
+  if (variable.empty() || !value) return;
 
-		std::string tableName = getTableName(peerId, channel, variable);
+  std::string tableName = getTableName(peerId, channel, variable);
 
-		if(value->type != Ipc::VariableType::tBoolean && value->type != Ipc::VariableType::tFloat && value->type != Ipc::VariableType::tInteger && value->type != Ipc::VariableType::tInteger64 && value->type != Ipc::VariableType::tString && value->type != Ipc::VariableType::tBase64)
-		{
-			Ipc::PVariable encodedValue = std::make_shared<Ipc::Variable>(Ipc::VariableType::tString);
-			encodedValue->stringValue = _jsonEncoder->getString(value);
-			value = encodedValue;
-		}
+  if (value->type != Ipc::VariableType::tBoolean && value->type != Ipc::VariableType::tFloat && value->type != Ipc::VariableType::tInteger && value->type != Ipc::VariableType::tInteger64 && value->type != Ipc::VariableType::tString
+      && value->type != Ipc::VariableType::tBase64) {
+    Ipc::PVariable encodedValue = std::make_shared<Ipc::Variable>(Ipc::VariableType::tString);
+    encodedValue->stringValue = _jsonEncoder->getString(value);
+    value = encodedValue;
+  }
 
-		std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + BaseLib::Http::encodeURL(value->toString()) + (value->type == Ipc::VariableType::tString ? "\"" : "") + (value->type == Ipc::VariableType::tInteger || value->type == Ipc::VariableType::tInteger64 ? "i" : ""), value->type != Ipc::VariableType::tFloat && value->type != Ipc::VariableType::tInteger && value->type != Ipc::VariableType::tInteger64);
-		enqueue(0, entry);
-	}
+  std::shared_ptr<BaseLib::IQueueEntry> entry = std::make_shared<QueueEntry>(
+      tableName + " value=" + (value->type == Ipc::VariableType::tString ? "\"" : "") + BaseLib::Http::encodeURL(value->toString()) + (value->type == Ipc::VariableType::tString ? "\"" : "")
+          + (value->type == Ipc::VariableType::tInteger || value->type == Ipc::VariableType::tInteger64 ? "i" : ""),
+      value->type != Ipc::VariableType::tFloat && value->type != Ipc::VariableType::tInteger && value->type != Ipc::VariableType::tInteger64);
+  enqueue(0, entry);
+}
 //}}}

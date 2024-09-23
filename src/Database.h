@@ -36,50 +36,52 @@
 #include "homegear-ipc/JsonDecoder.h"
 #include "homegear-ipc/JsonEncoder.h"
 
-class Database : public BaseLib::IQueue
-{
-public:
-	class QueueEntry : public BaseLib::IQueueEntry
-	{
-	public:
-		QueueEntry(std::string command, bool lowres) { _command = command; _lowres = lowres; };
-		virtual ~QueueEntry() {};
-		std::string& getCommand() { return _command; }
-		bool getLowres() { return _lowres; }
-	private:
-		std::string _command;
-		bool _lowres = false;
-	};
+class Database : public BaseLib::IQueue {
+ public:
+  class QueueEntry : public BaseLib::IQueueEntry {
+   public:
+    QueueEntry(const std::string &command, bool lowres) {
+      _command = command;
+      _lowres = lowres;
+    };
+    ~QueueEntry() override = default;;
+    std::string &getCommand() { return _command; }
+    bool getLowres() const { return _lowres; }
+   private:
+    std::string _command;
+    bool _lowres = false;
+  };
 
-	Database(BaseLib::SharedObjects* bl);
-	virtual ~Database();
+  explicit Database(BaseLib::SharedObjects *bl);
+  ~Database() override;
 
-	// {{{ General
-		bool open();
-	// }}}
+  // {{{ General
+  bool open();
+  // }}}
 
-	// {{{ History
-		std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>> getVariables();
-		void deleteVariableTable(uint64_t peerId, int32_t channel, std::string variable);
-		void createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue);
-		void saveValue(uint64_t peerId, int32_t channel, std::string& variable, Ipc::PVariable value);
-		Ipc::PVariable influxQueryPost(std::string query, std::string additionalHttpQueryStringParameters);
-		Ipc::PVariable influxQueryGet(std::string query, std::string additionalHttpQueryStringParameters);
-		Ipc::PVariable influxWrite(std::string query, bool lowRes);
-		Ipc::PVariable createContinuousQuery(std::string measurement);
-	// }}}
-protected:
-    std::atomic_bool _initializing;
-	std::string _credentials;
-	std::string _pingHeader;
-	std::string _writeHeader;
-	std::string _writeHeaderLowRes;
-	std::unique_ptr<BaseLib::HttpClient> _httpClient;
-	std::unique_ptr<Ipc::JsonDecoder> _jsonDecoder;
-	std::unique_ptr<Ipc::JsonEncoder> _jsonEncoder;
+  // {{{ History
+  std::unordered_map<uint64_t, std::unordered_map<int32_t, std::set<std::string>>> getVariables();
+  void deleteVariableTable(uint64_t peerId, int32_t channel, std::string variable);
+  void createVariableTable(uint64_t peerId, int32_t channel, std::string variable, Ipc::PVariable initialValue);
+  void saveValue(uint64_t peerId, int32_t channel, std::string &variable, Ipc::PVariable value);
+  Ipc::PVariable influxQueryPost(const std::string &query, const std::string &additionalHttpQueryStringParameters);
+  Ipc::PVariable influxQueryGet(const std::string &query, const std::string &additionalHttpQueryStringParameters);
+  Ipc::PVariable influxWrite(const std::string &query, bool lowRes);
+  Ipc::PVariable queueInfluxWrite(const std::string &query, bool low_res);
+  Ipc::PVariable createContinuousQuery(const std::string &measurement);
+  // }}}
+ protected:
+  std::atomic_bool _initializing{false};
+  std::string _credentials;
+  std::string _pingHeader;
+  std::string _writeHeader;
+  std::string _writeHeaderLowRes;
+  std::unique_ptr<BaseLib::HttpClient> _httpClient;
+  std::unique_ptr<Ipc::JsonDecoder> _jsonDecoder;
+  std::unique_ptr<Ipc::JsonEncoder> _jsonEncoder;
 
-	std::string getTableName(uint64_t peerId, int32_t channel, std::string& variable);
-	virtual void processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry>& entry);
+  static std::string getTableName(uint64_t peerId, int32_t channel, std::string &variable);
+  void processQueueEntry(int32_t index, std::shared_ptr<BaseLib::IQueueEntry> &entry) override;
 };
 
 #endif
