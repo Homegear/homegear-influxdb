@@ -8,6 +8,6 @@ Homepage: https://homegear.eu
 
 Package: homegear-influxdb
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}, libhomegear-base (= <BASELIBVER>), libhomegear-ipc, homegear (>= 0.7), libgcrypt20, libgnutlsxx28, libgpg-error0 (>= 1.10), procps
+Depends: ${shlibs:Depends}, ${misc:Depends}, libhomegear-base (= <BASELIBVER>), libhomegear-ipc, homegear (>= 0.7), libgcrypt20, libgnutls30t64 | libgnutls30, libgpg-error0 (>= 1.10), procps
 Description: Passes variable changes in Homegear to InfluxDB
  IPC client for Homegear to pass variable changes to Influx DB
