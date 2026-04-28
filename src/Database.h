@@ -31,6 +31,8 @@
 #ifndef DATABASECONTROLLER_H_
 #define DATABASECONTROLLER_H_
 
+#include <cstdint>
+
 #include "homegear-base/BaseLib.h"
 #include "homegear-ipc/Variable.h"
 #include "homegear-ipc/JsonDecoder.h"
