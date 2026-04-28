@@ -31,6 +31,8 @@
 #ifndef HISTORYSETTINGS_H_
 #define HISTORYSETTINGS_H_
 
+#include <cstdint>
+
 #include <homegear-base/BaseLib.h>
 
 class Settings
